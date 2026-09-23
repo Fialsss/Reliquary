@@ -174,12 +174,23 @@ export default function Settings({ status, refresh, setArt, startTour }: PagePro
                 <div className="grow">
                   <b>Reliquary</b>
                   <small className="mono">
-                    v{VERSION} · GPL-3.0
+                    v{VERSION} · GPL-3.0 · © 2026 Fialsss
                   </small>
                 </div>
                 <a className="btn ghost small" href={REPO} target="_blank" rel="noreferrer">
                   <ExternalLink size={14} /> GitHub
                 </a>
+              </div>
+              <div className="setting">
+                <div className="setting-label">
+                  <b>{t('about.author')}</b>
+                  <small>{t('about.authorHint')}</small>
+                </div>
+                <div className="setting-control">
+                  <a className="link-btn" href="https://github.com/Fialsss" target="_blank" rel="noreferrer">
+                    Fialsss <ExternalLink size={12} />
+                  </a>
+                </div>
               </div>
               {CREDITS.map(([name, author, url]) => (
                 <div key={name} className="setting">

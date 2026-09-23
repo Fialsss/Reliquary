@@ -121,6 +121,8 @@ La finestra non accede mai direttamente alla rete o al disco. Ogni azione è una
 
 Dettagli in [THIRD_PARTY.md](THIRD_PARTY.md).
 
-## Licenza
+## Licenza e crediti
 
-[GPL-3.0](LICENSE). Rainbow Six Siege è un marchio di Ubisoft Entertainment. Questo progetto non è affiliato né approvato da Ubisoft o Valve.
+Reliquary è Copyright (C) 2026 **Fialsss**, rilasciato sotto [GPL-3.0](LICENSE) con un termine aggiuntivo (sezione 7(b)): le copie e i lavori derivati devono mantenere la dicitura **"Based on Reliquary by Fialsss — https://github.com/Fialsss/Reliquary"** nella loro documentazione e nella loro schermata crediti o informazioni. Dettagli in [NOTICE.md](NOTICE.md).
+
+ Rainbow Six Siege è un marchio di Ubisoft Entertainment. Questo progetto non è affiliato né approvato da Ubisoft o Valve.

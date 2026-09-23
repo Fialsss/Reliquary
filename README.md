@@ -121,6 +121,8 @@ The window never talks to the network or the disk directly. Every action is a re
 
 See [THIRD_PARTY.md](THIRD_PARTY.md) for details.
 
-## License
+## License and credits
 
-[GPL-3.0](LICENSE). Rainbow Six Siege is a trademark of Ubisoft Entertainment. This project is not affiliated with or endorsed by Ubisoft or Valve.
+Reliquary is Copyright (C) 2026 **Fialsss**, released under [GPL-3.0](LICENSE) with one additional term (section 7(b)): copies and derivative works must keep the notice **"Based on Reliquary by Fialsss — https://github.com/Fialsss/Reliquary"** in their documentation and in their credits or about screen. Details in [NOTICE.md](NOTICE.md).
+
+ Rainbow Six Siege is a trademark of Ubisoft Entertainment. This project is not affiliated with or endorsed by Ubisoft or Valve.

@@ -9,6 +9,8 @@ analysis = Analysis(
     [os.path.join(here, "reliquary_engine.py")],
     pathex=[here, os.path.join(here, "r6parser")],
     datas=[(os.path.join(here, "reliquary", "data"), "reliquary/data")],
+    # ooz.dll, built from engine/native/ooz by `npm run build:ooz` (build:engine runs it first)
+    binaries=[(os.path.join(here, "native", "ooz", "ooz.dll"), ".")],
     hiddenimports=collect_submodules("src"),
 )
 pyz = PYZ(analysis.pure)

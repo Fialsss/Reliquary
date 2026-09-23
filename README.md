@@ -66,7 +66,6 @@ This is how the original **Glacier for the 552 Commando (Y5S4)** was recovered. 
 
 - Windows 10 or 11, 64-bit
 - **For the Vault:** a Steam account that owns Rainbow Six Siege
-- **For reading current builds:** an Oodle runtime (`oo2core_*_win64.dll`) you are licensed to use. It is not bundled. Set its path in Settings.
 - [Blender](https://www.blender.org) for exports
 
 ## Run from source
@@ -83,7 +82,7 @@ npm run dev
 
 To use a Python that is not on `PATH`, set `RELIQUARY_PYTHON` to its full path.
 
-To build the installer and the portable exe into `dist/`, run `py -3 -m pip install pyinstaller`, then `npm run dist`.
+To build the installer and the portable exe into `dist/`, run `py -3 -m pip install pyinstaller`, then `npm run dist`. Building needs the Visual Studio C++ tools, which compile the bundled ooz decoder (`engine/native/ooz`).
 
 <details>
 <summary>Troubleshooting</summary>
@@ -109,7 +108,7 @@ The window never talks to the network or the disk directly. Every action is a re
 ## What Reliquary does not do
 
 - It ships **no game files**. Everything is read from your install, or downloaded from Steam with your own account.
-- It does not bundle Oodle, which is proprietary.
+- It does not bundle Oodle, which is proprietary. It ships **ooz** instead, an open-source decoder for the same compression, checked to give identical output on the current game files.
 - Season artwork is fetched at runtime from the Rainbow Six Fandom wiki and never stored in the repository.
 - Extracted assets belong to Ubisoft. Use them for personal renders and fan art, and don't redistribute them.
 

@@ -40,7 +40,7 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
   const store = status?.game.path.includes('steamapps') ? 'Steam' : 'Ubisoft Connect'
   const links = [
     { key: 'game', icon: FolderSearch, ok: gameOk, detail: gameOk ? store : t('pipe.missing') },
-    { key: 'oodle', icon: Cpu, ok: oodleOk, detail: oodleOk ? 'oo2core' : t('pipe.missing') },
+    { key: 'oodle', icon: Cpu, ok: oodleOk, detail: oodleOk ? (status?.oodle.bundled ? t('check.oodle.bundled') : 'oo2core') : t('pipe.missing') },
     {
       key: 'read',
       icon: Users,

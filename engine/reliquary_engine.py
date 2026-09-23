@@ -2,5 +2,5 @@
 from reliquary import art, env, operators, settings, steam, vault  # noqa: F401  (modules register their methods)
 from reliquary.rpc import emit, serve
 
-emit("engine.ready", {"version": "0.2.0"})
+emit("engine.ready", {"version": "0.3.0"})
 serve()

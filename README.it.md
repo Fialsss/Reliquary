@@ -66,7 +66,6 @@ Per ora gli archivi scaricati restano sul tuo disco. Aprirli e portare skin, arm
 
 - Windows 10 o 11 a 64 bit
 - **Per l'Archivio:** un account Steam che possiede Rainbow Six Siege
-- **Per leggere le build attuali:** un runtime Oodle (`oo2core_*_win64.dll`) che hai il diritto di usare. Non è incluso: imposta il percorso nelle Impostazioni.
 - [Blender](https://www.blender.org) per le esportazioni
 
 ## Avvio dal sorgente
@@ -83,7 +82,7 @@ npm run dev
 
 Per usare un Python che non è nel `PATH`, imposta `RELIQUARY_PYTHON` con il suo percorso completo.
 
-Per creare l'installer e l'exe portable in `dist/`: `py -3 -m pip install pyinstaller`, poi `npm run dist`.
+Per creare l'installer e l'exe portable in `dist/`: `py -3 -m pip install pyinstaller`, poi `npm run dist`. Servono gli strumenti C++ di Visual Studio, che compilano il decompressore ooz incluso (`engine/native/ooz`).
 
 <details>
 <summary>Problemi comuni</summary>
@@ -109,7 +108,7 @@ La finestra non accede mai direttamente alla rete o al disco. Ogni azione è una
 ## Cosa Reliquary non fa
 
 - **Non contiene file del gioco.** Tutto viene letto dalla tua installazione o scaricato da Steam con il tuo account.
-- Non include Oodle, che è proprietario.
+- Non include Oodle, che è proprietario. Include invece **ooz**, un decompressore open source per la stessa compressione, verificato con risultati identici sui file attuali del gioco.
 - Le immagini delle stagioni vengono caricate al momento dalla wiki Fandom di Rainbow Six e non sono salvate nella repository.
 - Gli asset estratti appartengono a Ubisoft. Usali per render personali e fan art, e non ridistribuirli.
 

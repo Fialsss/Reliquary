@@ -10,7 +10,7 @@ declare global {
 export const api = window.reliquary
 
 export type Check = { ok: boolean; path: string }
-export type Status = { game: Check; blender: Check & { version: string }; oodle: Check; depot: Check; home: string }
+export type Status = { game: Check; blender: Check & { version: string }; oodle: Check & { bundled?: boolean }; depot: Check; home: string }
 export type Patch = { patch: string; date: string; manifest: string }
 export type Season = { id: string; year: number; season: number; name: string; patches: Patch[]; local: number }
 export type DepotFile = { name: string; size: number; category: 'data' | 'textures' | 'meshes' | 'other'; local: boolean }

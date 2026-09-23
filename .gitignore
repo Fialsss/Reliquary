@@ -14,3 +14,7 @@ __pycache__/
 engine/**/output/
 engine-dist/
 build/
+*.lib
+*.exp
+*.obj
+*.pdb

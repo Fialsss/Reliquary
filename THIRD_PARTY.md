@@ -6,6 +6,14 @@
 - Vendored in `engine/r6parser/src`, unmodified, from commit `f9531de198b88d248171709a5f5740053e51bddd` (2026-09-20)
 - License: GNU GPL-3.0. Reliquary as a whole is distributed under the same license (see `LICENSE`).
 
+## ooz (Kraken / Leviathan decoder)
+
+- Source: https://github.com/powzix/ooz, commit `05038060aa68f9187ae9923b2388ca8db40e58d1`
+- Vendored in `engine/native/ooz`: `kraken.cpp` (GPL-3.0-or-later, Copyright (C) 2016 Powzix) with its `stdafx.h` and `targetver.h`.
+- Modified for Reliquary: two stack arrays in `Kraken_DecodeMultiArray` enlarged from 32 to 64 entries (current Oodle Leviathan streams use more than 32 arrays and overflowed them). Reliquary adds `ooz_export.cpp`, which exports the decoder under Oodle's `OodleLZ_Decompress` signature.
+- The LZNA and Bitknit decoders of ooz are not included (their files carry no license, and Siege archives don't use them).
+- Built into `ooz.dll` by `engine/native/ooz/build.bat` and shipped in the release builds. Checked against Oodle on 3,490 chunks (411 MB) of the current game: identical output.
+
 ## DepotDownloader
 
 - Source: https://github.com/SteamRE/DepotDownloader
@@ -26,5 +34,5 @@ Season covers and galleries are looked up at runtime on the [Rainbow Six Fandom 
 
 ## Not included
 
-- The Oodle runtime (`oo2core_*_win64.dll`) is proprietary software by RAD Game Tools / Epic Games. It is never bundled; users point Reliquary to a copy they are licensed to use.
+- The Oodle runtime (`oo2core_*_win64.dll`) is proprietary software by RAD Game Tools / Epic Games. It is never bundled: Reliquary uses ooz instead, and users who own a copy of Oodle can still choose it in Settings.
 - No Rainbow Six Siege game files, textures or models are part of this repository. Season covers in the app are generated at runtime.

@@ -1,6 +1,6 @@
 {
   "name": "reliquary",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Desktop studio for Rainbow Six Siege assets: operators, weapons, skins and retired seasons, straight into Blender.",
   "license": "GPL-3.0-or-later",
@@ -10,7 +10,8 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
-    "build:engine": "python -m PyInstaller --noconfirm --distpath engine-dist --workpath build/engine engine/reliquary-engine.spec",
+    "build:ooz": "engine\\native\\ooz\\build.bat",
+    "build:engine": "npm run build:ooz && python -m PyInstaller --noconfirm --distpath engine-dist --workpath build/engine engine/reliquary-engine.spec",
     "dist": "npm run build:engine && electron-vite build && electron-builder --win"
   },
   "dependencies": {

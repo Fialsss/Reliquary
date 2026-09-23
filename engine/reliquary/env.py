@@ -75,11 +75,19 @@ def _version_key(version: str) -> tuple[int, ...]:
     return tuple(int(x) for x in version.split(".") if x.isdigit())
 
 
+def bundled_ooz() -> Path | None:
+    """ooz: the open-source Kraken/Leviathan decoder shipped with Reliquary, exported under Oodle's API."""
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent / "native" / "ooz"))
+    dll = base / "ooz.dll"
+    return dll if dll.is_file() else None
+
+
 def find_oodle() -> Path | None:
+    """A real Oodle chosen by the user wins; otherwise the bundled ooz does the same job."""
     for value in (settings.load()["oodle"], os.environ.get("R6_OODLE_DLL", "")):
         if value and Path(value).is_file():
             return Path(value)
-    return None
+    return bundled_ooz()
 
 
 def depot_tool() -> Path:
@@ -104,7 +112,7 @@ def status() -> dict:
     return {
         "game": {"ok": bool(game), "path": str(game or "")},
         "blender": {"ok": bool(blender), "path": str(blender or ""), "version": version},
-        "oodle": {"ok": bool(oodle), "path": str(oodle or "")},
+        "oodle": {"ok": bool(oodle), "path": str(oodle or ""), "bundled": oodle is not None and oodle == bundled_ooz()},
         "depot": {"ok": tool.is_file(), "path": str(tool)},
         "home": str(settings.HOME),
     }

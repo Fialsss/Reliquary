@@ -51,7 +51,7 @@ export default function Home({ go, setArt, status, openSeason }: PageProps) {
     },
     {
       key: 'oodle', icon: Cpu, ok: status?.oodle.ok, fix: () => go('settings'),
-      detail: status?.oodle.path ? basename(status.oodle.path) : t('check.oodle.hint')
+      detail: status?.oodle.bundled ? t('check.oodle.bundled') : status?.oodle.path ? basename(status.oodle.path) : t('check.oodle.hint')
     }
   ]
   const missing = checks.filter((c) => !c.ok).length

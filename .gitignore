@@ -1,0 +1,14 @@
+node_modules/
+out/
+dist/
+__pycache__/
+*.pyc
+
+# game data and proprietary runtimes never belong in the repo
+*.forge
+*.depgraphbin
+*.dll
+*.dds
+*.blend
+*.blend1
+engine/**/output/

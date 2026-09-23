@@ -16,7 +16,12 @@ const api = {
   pick: (kind: 'file' | 'folder', extensions?: string[]): Promise<string | null> =>
     ipcRenderer.invoke('dialog:pick', kind, extensions),
   open: (path: string): Promise<string> => ipcRenderer.invoke('shell:open', path),
-  window: (action: 'minimize' | 'maximize' | 'close') => ipcRenderer.send('window', action)
+  window: (action: 'minimize' | 'maximize' | 'close') => ipcRenderer.send('window', action),
+  onWindow(listener: (state: 'closing' | 'minimizing' | 'maximize' | 'unmaximize' | 'restore') => void): () => void {
+    const handler = (_: IpcRendererEvent, state: Parameters<typeof listener>[0]) => listener(state)
+    ipcRenderer.on('window:state', handler)
+    return () => ipcRenderer.removeListener('window:state', handler)
+  }
 }
 
 contextBridge.exposeInMainWorld('reliquary', api)

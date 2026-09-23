@@ -9,9 +9,9 @@
   <a href="README.it.md">Leggi in italiano</a>
 </p>
 
-![Reliquary home](docs/home.png)
+![Reliquary in action](docs/reliquary.gif)
 
-> **Preview (0.1).** The Vault works end to end. Operators and the Armory are being built: see [Status](#status).
+> **Preview.** The Vault works end to end. Operators and the Armory are being built: see [Status](#status).
 
 ## Download
 
@@ -24,9 +24,21 @@ Both include everything they need, so you don't have to install Python or Node. 
 
 The builds are not code-signed yet, so Windows SmartScreen may show *"Windows protected your PC"* the first time. Click **More info → Run anyway**. The source of every build is this repository.
 
+## Getting started
+
+The app opens with a guided tour the first time, and the **?** button in the top bar brings it back whenever you need it. In short:
+
+1. **Sign in with Steam.** Press *Sign in with Steam* at the top right and scan the QR code with the Steam app on your phone (shield icon → *Scan a QR code*). The account must own Rainbow Six Siege on Steam. Your Steam name and picture then appear in the top bar.
+2. **Open the Vault** and pick a season. Every card is the original build released at that time.
+3. **Load the file list.** Reliquary asks Steam which archives that build contains, with their sizes.
+4. **Tick what you need.** *Data* archives are small (tables, materials, references), *Textures* are 2 to 9 GB each, *Meshes* are the 3D models. For a first test, pick a small file.
+5. **Download.** It runs in the background, with its progress in the top bar. Files land in your Library folder, which you can open from the account menu.
+
+For now the downloaded archives stay on your disk. Opening them and bringing skins, weapons and charms into Blender is what the next versions add.
+
 ## What it does
 
-**The Vault: retired content, one archive at a time.** Steam still serves every Siege build published since 2015. Reliquary lists all 43 seasons, from Y1S0 Vanilla to Y11S2, asks Steam for the file list of the build you pick, and downloads only the archives you tick. You don't need the whole 60+ GB game. You sign in once by scanning a QR code with the Steam mobile app, right inside the window.
+**The Vault: retired content, one archive at a time.** Steam still serves every Siege build published since 2015. Reliquary lists all 43 seasons, from Y1S0 Vanilla to Y11S2, asks Steam for the file list of the build you pick, and downloads only the archives you tick. You don't need the whole 60+ GB game. You sign in once by scanning a QR code with the Steam mobile app, right inside the window, and your Steam profile shows up in the top bar. Downloads keep running while you use the rest of the app.
 
 This is how the original **Glacier for the 552 Commando (Y5S4)** was recovered. It no longer exists in the live game. Its textures sat in a single 9 GB archive of the Neon Dawn build.
 
@@ -34,11 +46,11 @@ This is how the original **Glacier for the 552 Commando (Y5S4)** was recovered. 
 
 **Workspace detection.** Reliquary finds the game through Ubisoft Connect or your Steam libraries, finds Blender, and tells you what is missing.
 
-**Operators.** Reliquary reads the operator roster from your own install with the bundled [R6-parser](https://github.com/TrueShadow01/R6-parser) engine.
+**Operators.** Reliquary reads the operator roster from your own install with the bundled [R6-parser](https://github.com/TrueShadow01/R6-parser) engine. The page shows the chain it needs (game found → Oodle runtime → roster read) and what to do when a link is missing.
 
 **Armory (in development).** This is the weapon → skin → Blender pipeline. Skins are resolved through the game's own references (cosmetic record → material selection → material bundle → texture UIDs), never guessed from how they look. Every skin will carry that chain as proof.
 
-![The Armory](docs/armory.png)
+![Operators](docs/operators.png)
 
 ## Status
 
@@ -98,6 +110,7 @@ The window never talks to the network or the disk directly. Every action is a re
 
 - It ships **no game files**. Everything is read from your install, or downloaded from Steam with your own account.
 - It does not bundle Oodle, which is proprietary.
+- Season artwork is fetched at runtime from the Rainbow Six Fandom wiki and never stored in the repository.
 - Extracted assets belong to Ubisoft. Use them for personal renders and fan art, and don't redistribute them.
 
 ## Credits

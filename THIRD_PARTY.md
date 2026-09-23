@@ -20,6 +20,10 @@ The installer and the portable exe carry the engine frozen with [PyInstaller](ht
 
 Inter and JetBrains Mono (SIL Open Font License 1.1, via Fontsource), React (MIT), Lucide icons (ISC), Electron (MIT). Versions are listed in `package.json`.
 
+## Season artwork
+
+Season covers and galleries are looked up at runtime on the [Rainbow Six Fandom wiki](https://rainbowsix.fandom.com) and loaded by the window like any web page would. The images belong to Ubisoft; none of them is stored in this repository or in the release builds. Offline, the app shows generated covers instead.
+
 ## Not included
 
 - The Oodle runtime (`oo2core_*_win64.dll`) is proprietary software by RAD Game Tools / Epic Games. It is never bundled; users point Reliquary to a copy they are licensed to use.

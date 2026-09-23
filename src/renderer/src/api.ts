@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReliquaryApi } from '../../preload'
 
 declare global {
@@ -22,6 +22,18 @@ export function useEngineEvent<T>(name: string, listener: (data: T) => void): vo
   const latest = useRef(listener)
   latest.current = listener
   useEffect(() => api.onEvent((e) => e.event === name && latest.current(e.data as T)), [name])
+}
+
+// Season covers come from the engine once per session (it caches them for a week on disk).
+let covers: Promise<Record<string, string>> | null = null
+
+export function useCovers(): Record<string, string> {
+  const [value, setValue] = useState<Record<string, string>>({})
+  useEffect(() => {
+    covers ??= api.call<Record<string, string>>('art.seasons').catch(() => ({}))
+    covers.then(setValue)
+  }, [])
+  return value
 }
 
 export function bytes(size: number): string {

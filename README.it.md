@@ -9,9 +9,9 @@
   <a href="README.md">Read in English</a>
 </p>
 
-![Home di Reliquary](docs/home.png)
+![Reliquary in azione](docs/reliquary.gif)
 
-> **Anteprima (0.1).** L'Archivio funziona dall'inizio alla fine. Operatori e Armeria sono in costruzione: vedi [Stato](#stato).
+> **Anteprima.** L'Archivio funziona dall'inizio alla fine. Operatori e Armeria sono in costruzione: vedi [Stato](#stato).
 
 ## Download
 
@@ -24,9 +24,21 @@ Contengono già tutto quello che serve, quindi non devi installare Python o Node
 
 Le build non sono ancora firmate, quindi la prima volta Windows SmartScreen può mostrare *"PC protetto da Windows"*. Clicca **Ulteriori informazioni → Esegui comunque**. Il sorgente di ogni build è questa repository.
 
+## Primi passi
+
+Al primo avvio l'app apre una guida passo per passo, e il pulsante **?** nella barra in alto la riapre quando vuoi. In breve:
+
+1. **Accedi con Steam.** Premi *Accedi con Steam* in alto a destra e inquadra il QR con l'app di Steam sul telefono (scudo → *Scansiona un codice QR*). L'account deve possedere Rainbow Six Siege su Steam. Poi in alto compaiono il tuo nome Steam e la tua foto.
+2. **Apri l'Archivio** e scegli una stagione. Ogni scheda è la build originale uscita in quel periodo.
+3. **Carica l'elenco dei file.** Reliquary chiede a Steam quali archivi contiene quella build, con le dimensioni.
+4. **Spunta quello che ti serve.** Gli archivi *Dati* sono piccoli (tabelle, materiali, riferimenti), le *Texture* pesano da 2 a 9 GB l'una, i *Modelli* sono le geometrie 3D. Per una prima prova scegli un file piccolo.
+5. **Scarica.** Il download va in sottofondo e l'avanzamento resta nella barra in alto. I file finiscono nella cartella Libreria, che apri dal menu account.
+
+Per ora gli archivi scaricati restano sul tuo disco. Aprirli e portare skin, armi e ciondoli in Blender è quello che aggiungono le prossime versioni.
+
 ## Cosa fa
 
-**L'Archivio: contenuti ritirati, un archivio alla volta.** Steam conserva ancora ogni build di Siege pubblicata dal 2015. Reliquary elenca tutte le 43 stagioni, da Y1S0 Vanilla a Y11S2, chiede a Steam l'elenco dei file della build che scegli e scarica solo gli archivi che spunti. Non serve scaricare l'intero gioco da oltre 60 GB. L'accesso si fa una volta sola, inquadrando un QR con l'app di Steam direttamente dentro la finestra.
+**L'Archivio: contenuti ritirati, un archivio alla volta.** Steam conserva ancora ogni build di Siege pubblicata dal 2015. Reliquary elenca tutte le 43 stagioni, da Y1S0 Vanilla a Y11S2, chiede a Steam l'elenco dei file della build che scegli e scarica solo gli archivi che spunti. Non serve scaricare l'intero gioco da oltre 60 GB. L'accesso si fa una volta sola, inquadrando un QR con l'app di Steam direttamente dentro la finestra, e il tuo profilo Steam compare nella barra in alto. I download continuano mentre usi il resto dell'app.
 
 È così che è stata recuperata la **Glacier originale del 552 Commando (Y5S4)**, che nel gioco attuale non esiste più. Le sue texture stavano in un solo archivio da 9 GB della build Neon Dawn.
 
@@ -34,11 +46,11 @@ Le build non sono ancora firmate, quindi la prima volta Windows SmartScreen può
 
 **Rilevamento della postazione.** Reliquary trova il gioco tramite Ubisoft Connect o le librerie di Steam, trova Blender e ti dice cosa manca.
 
-**Operatori.** Reliquary legge il roster dalla tua installazione con il motore [R6-parser](https://github.com/TrueShadow01/R6-parser) incluso.
+**Operatori.** Reliquary legge il roster dalla tua installazione con il motore [R6-parser](https://github.com/TrueShadow01/R6-parser) incluso. La pagina mostra la catena che serve (gioco trovato → runtime Oodle → lettura del roster) e cosa fare quando manca un anello.
 
 **Armeria (in sviluppo).** È la catena arma → skin → Blender. Le skin vengono ritrovate seguendo i riferimenti interni del gioco (record cosmetico → selezione materiale → bundle materiale → UID delle texture), mai indovinate dall'aspetto. Ogni skin porterà con sé quella catena come prova.
 
-![L'Armeria](docs/armory.png)
+![Operatori](docs/operators.png)
 
 ## Stato
 
@@ -98,6 +110,7 @@ La finestra non accede mai direttamente alla rete o al disco. Ogni azione è una
 
 - **Non contiene file del gioco.** Tutto viene letto dalla tua installazione o scaricato da Steam con il tuo account.
 - Non include Oodle, che è proprietario.
+- Le immagini delle stagioni vengono caricate al momento dalla wiki Fandom di Rainbow Six e non sono salvate nella repository.
 - Gli asset estratti appartengono a Ubisoft. Usali per render personali e fan art, e non ridistribuirli.
 
 ## Crediti

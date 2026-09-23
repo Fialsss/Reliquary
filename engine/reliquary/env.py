@@ -86,6 +86,15 @@ def depot_tool() -> Path:
     return settings.HOME / "tools" / "DepotDownloader" / "DepotDownloader.exe"
 
 
+# DepotDownloader keeps its Steam login in .NET IsolatedStorage, one Url.<hash> folder per exe location.
+ISOLATED = Path(os.environ.get("LOCALAPPDATA", "")) / "IsolatedStorage"
+STORE_NOTE = settings.HOME / "steam-store.txt"
+
+
+def saved_logins() -> dict[Path, float]:
+    return {p: p.stat().st_mtime for p in ISOLATED.glob("*/*/Url.*/AssemFiles/account.config")}
+
+
 @method("env.status")
 def status() -> dict:
     game = find_game()

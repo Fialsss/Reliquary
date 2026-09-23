@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ArrowLeft, CheckCircle2, DownloadCloud, FolderOpen, ListTree, LogOut, Search, Smartphone, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, DownloadCloud, FolderOpen, ListTree, LogIn, Search, Smartphone, X } from 'lucide-react'
 import type { PageProps } from '../App'
-import { api, bytes, useEngineEvent, type DepotFile, type Patch, type Season, type Settings } from '../api'
-import { hueOf, Shards } from '../art'
+import { api, bytes, useCovers, useEngineEvent, type DepotFile, type Patch, type Season } from '../api'
+import { hueOf, SeasonArt } from '../art'
 import { useI18n } from '../i18n'
+import { Avatar, useSession } from '../session'
 import { Check, Chip, PageHead, Segmented, Spinner } from '../ui'
 
 const seedOf = (s: Season) => s.year * 10 + s.season
 
-export default function Vault({ setArt }: PageProps) {
+export default function Vault({ setArt, focus, openSeason }: PageProps) {
   const { t } = useI18n()
+  const covers = useCovers()
   const [seasons, setSeasons] = useState<Season[] | null>(null)
   const [error, setError] = useState('')
   const [year, setYear] = useState('all')
@@ -20,6 +22,14 @@ export default function Vault({ setArt }: PageProps) {
   useEffect(() => {
     load()
   }, [])
+
+  useEffect(() => {
+    const match = focus && seasons?.find((s) => s.id === focus)
+    if (!match) return
+    setArt({ seed: seedOf(match), hue: hueOf(match.id), image: covers[match.id] })
+    setOpen(match)
+    openSeason(null)
+  }, [focus, seasons, covers])
 
   const years = useMemo(() => [...new Set((seasons ?? []).map((s) => s.year))], [seasons])
   const shown = (seasons ?? []).filter(
@@ -35,6 +45,7 @@ export default function Vault({ setArt }: PageProps) {
           load()
         }}
         setArt={setArt}
+        cover={covers[open.id]}
       />
     )
   }
@@ -66,14 +77,14 @@ export default function Vault({ setArt }: PageProps) {
           <button
             key={s.id}
             className="tile"
-            style={{ '--i': Math.min(i, 12) } as React.CSSProperties}
+            style={{ '--i': Math.min(i, 12), '--hue': hueOf(s.id) } as React.CSSProperties}
             onClick={() => {
-              setArt({ seed: seedOf(s), hue: hueOf(s.id) })
+              setArt({ seed: seedOf(s), hue: hueOf(s.id), image: covers[s.id] })
               setOpen(s)
             }}
           >
             <div className="cover">
-              <Shards seed={seedOf(s)} hue={hueOf(s.id)} />
+              <SeasonArt cover={covers[s.id]} seed={seedOf(s)} hue={hueOf(s.id)} />
             </div>
             <div className="tile-body">
               <span className="mono dim">{s.id}</span>
@@ -106,68 +117,61 @@ function Notice({ text, onClose }: { text: string; onClose?: () => void }) {
 
 const CATEGORIES = ['data', 'textures', 'meshes', 'other'] as const
 
-function SeasonDetail({ season, back, setArt }: { season: Season; back: () => void; setArt: PageProps['setArt'] }) {
+function SeasonDetail({ season, back, setArt, cover }: { season: Season; back: () => void; setArt: PageProps['setArt']; cover?: string }) {
   const { t } = useI18n()
+  const { profile, job, signIn } = useSession()
   const [patch, setPatch] = useState<Patch>(season.patches.at(-1)!)
   const [files, setFiles] = useState<DepotFile[] | null>(null)
   const [picked, setPicked] = useState<Set<string>>(new Set())
-  const [busy, setBusy] = useState<'files' | 'download' | null>(null)
-  const [qr, setQr] = useState<string[] | null>(null)
+  const [listing, setListing] = useState(false)
   const [phase, setPhase] = useState('')
   const [log, setLog] = useState('')
-  const [progress, setProgress] = useState<{ percent: number; file: string } | null>(null)
   const [error, setError] = useState('')
-  const [user, setUser] = useState('')
+  const [gallery, setGallery] = useState<string[]>([])
+  const [viewing, setViewing] = useState<number | null>(null)
+
+  const here = job?.season === season.id && job.manifest === patch.manifest
+  const load = (refresh = false) =>
+    api.call<DepotFile[]>('vault.files', { season: season.id, manifest: patch.manifest, refresh }).then(setFiles)
 
   useEffect(() => {
-    setArt({ seed: seedOf(season), hue: hueOf(season.id) })
-    api.call<Settings>('settings.get').then((s) => setUser(s.steam_user))
+    setArt({ seed: seedOf(season), hue: hueOf(season.id), image: cover })
+    api.call<string[]>('art.gallery', { season: season.id }).then(setGallery).catch(() => undefined)
   }, [])
   useEffect(() => {
     setFiles(null)
     setPicked(new Set())
   }, [patch])
 
-  useEngineEvent<{ matrix: string[] }>('vault.qr', (d) => setQr(d.matrix))
-  useEngineEvent<{ key: string }>('vault.status', (d) => setPhase(d.key))
+  useEngineEvent<{ key: string }>('steam.status', (d) => setPhase(d.key))
   useEngineEvent<string>('vault.log', setLog)
-  useEngineEvent<{ percent: number; file: string }>('vault.progress', (d) => {
-    setQr(null)
-    setProgress(d)
-  })
-  useEngineEvent<{ user: string }>('vault.signed_in', (d) => {
-    setQr(null)
-    setUser(d.user)
+  useEngineEvent<{ season: string; manifest: string; ok: boolean }>('vault.ended', (d) => {
+    if (d.season !== season.id || d.manifest !== patch.manifest) return
+    load().catch(() => undefined)
+    if (d.ok) setPicked(new Set())
   })
 
-  const run = async (kind: 'files' | 'download', job: () => Promise<void>) => {
-    setBusy(kind)
+  const listFiles = async () => {
+    setListing(true)
     setError('')
     setPhase('')
     setLog('')
     try {
-      await job()
+      await load()
     } catch (e) {
-      const message = (e as Error).message
-      if (message !== 'Cancelled') setError(message)
+      if ((e as Error).message !== 'Cancelled') setError((e as Error).message)
     } finally {
-      setBusy(null)
-      setQr(null)
-      setProgress(null)
+      setListing(false)
     }
   }
 
-  const listFiles = () =>
-    run('files', async () => {
-      setFiles(await api.call<DepotFile[]>('vault.files', { season: season.id, manifest: patch.manifest }))
-    })
-
-  const download = () =>
-    run('download', async () => {
-      await api.call('vault.download', { season: season.id, manifest: patch.manifest, files: [...picked] })
-      setFiles(await api.call<DepotFile[]>('vault.files', { season: season.id, manifest: patch.manifest }))
-      setPicked(new Set())
-    })
+  // runs in the background: the top bar follows it on every page, and the session announces the end
+  const download = () => {
+    setError('')
+    api
+      .call('vault.download', { season: season.id, manifest: patch.manifest, files: [...picked] })
+      .catch((e: Error) => e.message !== 'Cancelled' && setError(e.message))
+  }
 
   const openFolder = async () => api.open(await api.call<string>('vault.folder', { season: season.id, manifest: patch.manifest }))
 
@@ -194,7 +198,7 @@ function SeasonDetail({ season, back, setArt }: { season: Season; back: () => vo
           <ArrowLeft size={15} /> {t('vault.back')}
         </button>
         <div className="detail-cover">
-          <Shards seed={seedOf(season)} hue={hueOf(season.id)} grain />
+          <SeasonArt cover={cover} seed={seedOf(season)} hue={hueOf(season.id)} />
           <div className="detail-cover-text">
             <span className="mono">{season.id}</span>
             <b>{season.name}</b>
@@ -220,40 +224,45 @@ function SeasonDetail({ season, back, setArt }: { season: Season; back: () => vo
           <dt>{t('vault.depot')}</dt>
           <dd className="mono">359550 / 359551</dd>
         </dl>
+        {gallery.length > 0 && (
+          <div className="gallery">
+            <div className="label">{t('vault.gallery', { n: gallery.length })}</div>
+            <div className="gallery-grid">
+              {gallery.map((url, i) => (
+                <button key={url} onClick={() => setViewing(i)} aria-label={t('vault.viewImage', { n: i + 1 })}>
+                  <img src={url} alt="" loading="lazy" draggable={false} onError={() => setGallery((all) => all.filter((u) => u !== url))} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {viewing !== null && <Lightbox images={gallery} index={viewing} setIndex={setViewing} />}
       </aside>
 
       <section className="detail-main">
         <div className="card steam">
-          {qr ? (
-            <div className="qr-row">
-              <QrCode matrix={qr} />
-              <div>
-                <div className="label">{t('steam.scanTitle')}</div>
-                <p>{t('steam.scanBody')}</p>
-                <Chip tone="info">
-                  <Smartphone size={12} /> {t('steam.waiting')}
-                </Chip>
-              </div>
-            </div>
-          ) : (
-            <div className="steam-row">
+          <div className="steam-row">
+            {listing ? (
               <span className="tile-icon">
-                {busy ? <Spinner /> : user ? <CheckCircle2 size={17} /> : <Smartphone size={17} strokeWidth={1.8} />}
+                <Spinner />
               </span>
-              <div className="grow">
-                <b>{busy ? t(`steam.phase.${phase || 'connecting'}`) : user ? t('steam.signedIn', { user }) : t('steam.signedOut')}</b>
-                <small className={busy ? 'mono' : ''}>{busy ? log || '…' : user ? t('steam.remembered') : t('steam.signedOutBody')}</small>
-              </div>
-              {user && !busy && (
-                <button
-                  className="btn ghost small"
-                  onClick={() => api.call('vault.signout').then(() => setUser(''))}
-                >
-                  <LogOut size={14} /> {t('steam.signOut')}
-                </button>
-              )}
+            ) : profile ? (
+              <Avatar profile={profile} size={38} />
+            ) : (
+              <span className="tile-icon">
+                <Smartphone size={17} strokeWidth={1.8} />
+              </span>
+            )}
+            <div className="grow">
+              <b>{listing ? t(`steam.phase.${phase || 'connecting'}`) : profile ? t('steam.signedIn', { user: profile.name }) : t('steam.signedOut')}</b>
+              <small className={listing ? 'mono' : ''}>{listing ? log || '…' : profile ? t('steam.remembered') : t('steam.signedOutBody')}</small>
             </div>
-          )}
+            {!profile && !listing && (
+              <button className="btn primary small" onClick={signIn}>
+                <LogIn size={14} /> {t('account.signIn')}
+              </button>
+            )}
+          </div>
         </div>
 
         {error && <Notice text={error} onClose={() => setError('')} />}
@@ -279,8 +288,8 @@ function SeasonDetail({ season, back, setArt }: { season: Season; back: () => vo
             <div className="files-empty">
               <ListTree size={26} strokeWidth={1.5} />
               <p>{t('vault.listHint')}</p>
-              <button className="btn primary" onClick={listFiles} disabled={busy !== null}>
-                {busy === 'files' ? <Spinner /> : <ListTree size={16} />} {t('vault.listFiles')}
+              <button className="btn primary" onClick={listFiles} disabled={listing || !!job}>
+                {listing ? <Spinner /> : <ListTree size={16} />} {t('vault.listFiles')}
               </button>
             </div>
           ) : (
@@ -299,14 +308,14 @@ function SeasonDetail({ season, back, setArt }: { season: Season; back: () => vo
             </ul>
           )}
 
-          {progress && (
+          {here && (
             <div className="progress">
               <div className="bar">
-                <i style={{ width: `${progress.percent}%` }} />
+                <i style={{ width: `${job.percent}%` }} />
               </div>
               <div className="progress-text">
-                <span className="mono">{progress.file}</span>
-                <b>{progress.percent.toFixed(1)}%</b>
+                <span className="mono">{job.file || t('steam.phase.connecting')}</span>
+                <b>{job.percent.toFixed(1)}%</b>
               </div>
             </div>
           )}
@@ -320,12 +329,12 @@ function SeasonDetail({ season, back, setArt }: { season: Season; back: () => vo
                     <FolderOpen size={15} /> {t('vault.openFolder')}
                   </button>
                 )}
-                {busy === 'download' ? (
+                {here ? (
                   <button className="btn ghost" onClick={() => api.call('vault.cancel')}>
                     <X size={15} /> {t('vault.cancel')}
                   </button>
                 ) : (
-                  <button className="btn primary" onClick={download} disabled={!picked.size || busy !== null}>
+                  <button className="btn primary" onClick={download} disabled={!picked.size || !!job || listing}>
                     <DownloadCloud size={16} /> {t('vault.download')}
                   </button>
                 )}
@@ -338,14 +347,38 @@ function SeasonDetail({ season, back, setArt }: { season: Season; back: () => vo
   )
 }
 
-function QrCode({ matrix }: { matrix: string[] }) {
-  const size = matrix.length
-  const cells = matrix.flatMap((row, y) => [...row].map((c, x) => (c === '1' ? `M${x} ${y}h1v1h-1z` : '')))
+/** Full-window image viewer: arrows or ←/→ to move, Esc or a click outside to close. */
+function Lightbox({ images, index, setIndex }: { images: string[]; index: number; setIndex: (i: number | null) => void }) {
+  const { t } = useI18n()
+  const step = (delta: number) => setIndex((index + delta + images.length) % images.length)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIndex(null)
+      if (e.key === 'ArrowRight') step(1)
+      if (e.key === 'ArrowLeft') step(-1)
+    }
+    addEventListener('keydown', onKey)
+    return () => removeEventListener('keydown', onKey)
+  }, [index])
   return (
-    <div className="qr">
-      <svg viewBox={`-2 -2 ${size + 4} ${size + 4}`} shapeRendering="crispEdges" role="img" aria-label="Steam sign-in QR code">
-        <path d={cells.join('')} fill="#0b0b0d" />
-      </svg>
+    <div className="lightbox" onMouseDown={(e) => e.target === e.currentTarget && setIndex(null)}>
+      <img src={images[index]} alt="" key={images[index]} />
+      <button className="lb-close" onClick={() => setIndex(null)} aria-label={t('window.close')} data-tip={t('window.close')} data-tip-side="left">
+        <X size={18} />
+      </button>
+      {images.length > 1 && (
+        <>
+          <button className="lb-nav prev" onClick={() => step(-1)} aria-label={t('home.prev')}>
+            <ChevronLeft size={22} />
+          </button>
+          <button className="lb-nav next" onClick={() => step(1)} aria-label={t('home.next')}>
+            <ChevronRight size={22} />
+          </button>
+          <span className="lb-count mono">
+            {index + 1} / {images.length}
+          </span>
+        </>
+      )}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useId, useMemo } from 'react'
+import { useId, useMemo, useState } from 'react'
 
 /** A stable hue for a season or operator id, so each one keeps its colour. */
 export function hueOf(key: string): number {
@@ -94,6 +94,15 @@ export function Shards({ seed, hue, grain = false, className }: { seed: number; 
       {grain && <rect width="1200" height="800" filter={`url(#${id}grain)`} />}
     </svg>
   )
+}
+
+/** A season's real artwork when the wiki has it, the generated shards otherwise (offline, or not found). */
+export function SeasonArt({ cover, seed, hue, className }: { cover?: string; seed: number; hue: number; className?: string }) {
+  const [broken, setBroken] = useState(false)
+  if (cover && !broken) {
+    return <img className={`season-img ${className ?? ''}`} src={cover} alt="" loading="lazy" draggable={false} onError={() => setBroken(true)} />
+  }
+  return <Shards className={className} seed={seed} hue={hue} />
 }
 
 /** The Reliquary mark: a cut crystal, silver on black. */

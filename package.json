@@ -1,6 +1,6 @@
 {
   "name": "reliquary",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Desktop studio for Rainbow Six Siege assets: operators, weapons, skins and retired seasons, straight into Blender.",
   "license": "GPL-3.0-or-later",

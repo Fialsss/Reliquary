@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Archive, ArrowRight, Blocks, ChevronLeft, ChevronRight, Cpu, Crosshair, DownloadCloud, FolderSearch, Users } from 'lucide-react'
+import { Archive, ArrowRight, Blocks, CheckCircle2, ChevronLeft, ChevronRight, Cpu, Crosshair, FolderSearch, LogIn, Users } from 'lucide-react'
 import type { PageProps, Page } from '../App'
-import { api, basename, type Season } from '../api'
-import { hueOf, Mark, Shards } from '../art'
+import { api, basename, useCovers, type Season } from '../api'
+import { hueOf, Mark, SeasonArt, Shards } from '../art'
 import { useI18n } from '../i18n'
+import { Avatar, useSession } from '../session'
 
 const SLIDES = [
   { id: 'vault', seed: 41, hue: 196, page: 'vault', icon: Archive, alt: 'armory' },
@@ -12,8 +13,10 @@ const SLIDES = [
 ] as const
 const SLIDE_MS = 8000
 
-export default function Home({ go, setArt, status }: PageProps) {
+export default function Home({ go, setArt, status, openSeason }: PageProps) {
   const { t } = useI18n()
+  const { profile, signIn } = useSession()
+  const covers = useCovers()
   const [index, setIndex] = useState(0)
   const [seasons, setSeasons] = useState<Season[] | null>(null)
   const slide = SLIDES[index]
@@ -32,12 +35,26 @@ export default function Home({ go, setArt, status }: PageProps) {
   const recent = (seasons ?? []).slice(-4).reverse()
   const inLibrary = (seasons ?? []).filter((s) => s.local > 0).length
 
+  const store = status?.game.path.includes('steamapps') ? 'Steam' : status?.game.path ? 'Ubisoft Connect' : ''
   const checks = [
-    { key: 'game', icon: FolderSearch, ok: status?.game.ok, detail: status?.game.path && basename(status.game.path) },
-    { key: 'oodle', icon: Cpu, ok: status?.oodle.ok, detail: status?.oodle.path && basename(status.oodle.path) },
-    { key: 'blender', icon: Blocks, ok: status?.blender.ok, detail: status?.blender.version && `Blender ${status.blender.version}` },
-    { key: 'depot', icon: DownloadCloud, ok: status?.depot.ok, detail: 'DepotDownloader 3.4' }
+    {
+      key: 'steam', icon: LogIn, ok: !!profile, fix: signIn,
+      detail: profile ? profile.name : t('check.steam.hint')
+    },
+    {
+      key: 'game', icon: FolderSearch, ok: status?.game.ok, fix: () => go('settings'),
+      detail: store ? t('check.game.found', { store }) : t('check.game.hint')
+    },
+    {
+      key: 'blender', icon: Blocks, ok: status?.blender.ok, fix: () => go('settings'),
+      detail: status?.blender.version ? `Blender ${status.blender.version}` : t('check.blender.hint')
+    },
+    {
+      key: 'oodle', icon: Cpu, ok: status?.oodle.ok, fix: () => go('settings'),
+      detail: status?.oodle.path ? basename(status.oodle.path) : t('check.oodle.hint')
+    }
   ]
+  const missing = checks.filter((c) => !c.ok).length
 
   return (
     <div className="home">
@@ -45,10 +62,10 @@ export default function Home({ go, setArt, status }: PageProps) {
         <Shards className="hero-art" seed={slide.seed} hue={slide.hue} grain key={slide.id} />
         <div className="hero-veil" />
         <div className="hero-arrows">
-          <button onClick={() => step(-1)} aria-label={t('home.prev')}>
+          <button onClick={() => step(-1)} aria-label={t('home.prev')} data-tip={t('home.prev')}>
             <ChevronLeft size={16} />
           </button>
-          <button onClick={() => step(1)} aria-label={t('home.next')}>
+          <button onClick={() => step(1)} aria-label={t('home.next')} data-tip={t('home.next')}>
             <svg className="ring" viewBox="0 0 36 36" key={index}>
               <circle cx="18" cy="18" r="16.5" style={{ animationDuration: `${SLIDE_MS}ms` }} />
             </svg>
@@ -84,58 +101,64 @@ export default function Home({ go, setArt, status }: PageProps) {
       </section>
 
       <aside className="home-side">
-        <div className="card">
-          <div className="label">{t('home.workspace')}</div>
-          <ul className="rows">
-            {checks.map(({ key, icon: Icon, ok, detail }) => (
-              <li key={key}>
-                <span className="tile-icon">
-                  <Icon size={17} strokeWidth={1.8} />
-                </span>
+        <div className="card ready">
+          <div className="ready-head">
+            <div className="grow">
+              <div className="label">{t('home.workspace')}</div>
+              <b>{status == null ? '…' : missing ? t(missing === 1 ? 'home.fixOne' : 'home.fixMany', { n: missing }) : t('home.allReady')}</b>
+            </div>
+            <span className={`ready-count${missing ? '' : ' full'}`}>
+              {checks.length - missing}/{checks.length}
+            </span>
+          </div>
+          <div className="ready-bar" aria-hidden="true">
+            {checks.map((c) => (
+              <i key={c.key} className={status == null ? '' : c.ok ? 'ok' : 'todo'} />
+            ))}
+          </div>
+          <ul className="checks">
+            {checks.map(({ key, icon: Icon, ok, detail, fix }) => (
+              <li key={key} className={ok ? 'ok' : ''}>
+                <span className="check-icon">{key === 'steam' && profile ? <Avatar profile={profile} size={30} /> : <Icon size={16} strokeWidth={1.8} />}</span>
                 <div className="grow">
                   <b>{t(`check.${key}`)}</b>
-                  <small>{detail || t(`check.${key}.hint`)}</small>
+                  <small>{detail}</small>
                 </div>
-                <span className={`state ${status == null ? 'muted' : ok ? 'ok' : key === 'depot' ? 'info' : 'warn'}`}>
-                  {status == null ? '…' : ok ? t('state.ready') : key === 'depot' ? t('state.onDemand') : t('state.missing')}
-                </span>
+                {status == null ? null : ok ? (
+                  <CheckCircle2 size={18} className="check-ok" aria-label={t('state.ready')} />
+                ) : (
+                  <button className="btn ghost small" onClick={fix}>
+                    {t(key === 'steam' ? 'check.signIn' : 'check.set')}
+                  </button>
+                )}
               </li>
             ))}
           </ul>
-          <button className="btn fill wide" onClick={() => go('settings')}>
-            {t('home.openSettings')}
-          </button>
         </div>
 
-        <div className="card grow-card">
-          <div className="card-title">
-            <span className="tile-icon">
-              <Archive size={17} strokeWidth={1.8} />
-            </span>
-            <b>{t('home.latestSeasons')}</b>
+        <div className="card grow-card from-vault">
+          <div className="from-vault-head">
+            <div className="label">{t('home.fromVault')}</div>
+            <span className="mono dim">{seasons ? t('home.seasonCount', { n: seasons.length, local: inLibrary }) : '…'}</span>
           </div>
-          <ul className="rows">
+          <div className="mini-covers">
             {recent.map((s) => (
-              <li key={s.id} className="link" onClick={() => go('vault')}>
-                <Shards className="thumb" seed={s.year * 10 + s.season} hue={hueOf(s.id)} />
-                <div className="grow">
+              <button key={s.id} className="mini-cover" onClick={() => openSeason(s.id)}>
+                <SeasonArt cover={covers[s.id]} seed={s.year * 10 + s.season} hue={hueOf(s.id)} />
+                {s.local > 0 && <i className="mini-dot" aria-label={t('state.inLibrary')} />}
+                <span>
+                  <small className="mono">{s.id}</small>
                   <b>{s.name}</b>
-                  <small className="mono">
-                    {s.id} · {s.patches.at(-1)!.date}
-                  </small>
-                </div>
-                <span className={`state ${s.local ? 'ok' : 'info'}`}>{s.local ? t('state.inLibrary') : t('state.onSteam')}</span>
-              </li>
+                </span>
+              </button>
             ))}
-          </ul>
-          <div className="card-foot">
-            <span>{seasons ? t('home.seasonCount', { n: seasons.length, local: inLibrary }) : '…'}</span>
-            <button className="link-btn" onClick={() => go('vault')}>
-              {t('home.openVault')}
-            </button>
           </div>
+          <button className="btn fill wide" onClick={() => go('vault')}>
+            <Archive size={15} /> {t('home.openVault')}
+          </button>
         </div>
       </aside>
     </div>
   )
 }
+

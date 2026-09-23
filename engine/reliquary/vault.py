@@ -83,7 +83,7 @@ def _ensure_tool() -> Path:
     tool = env.depot_tool()
     if tool.is_file():
         return tool
-    emit("vault.status", {"key": "tool"})
+    emit("steam.status", {"key": "tool"})
     tool.parent.mkdir(parents=True, exist_ok=True)
     with urllib.request.urlopen(TOOL_URL, timeout=120) as response:
         zipfile.ZipFile(io.BytesIO(response.read())).extractall(tool.parent)
@@ -143,6 +143,7 @@ def _run(args: list[str]) -> list[str]:
     tool = _ensure_tool()
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     _cancelled = False
+    saved_logins = env.saved_logins()
     process = subprocess.Popen(
         [str(tool), "-app", str(APP), "-depot", str(DEPOT), *auth, *args],
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -151,7 +152,7 @@ def _run(args: list[str]) -> list[str]:
     _active = process
     log: list[str] = []
     qr: list[str] | None = None
-    emit("vault.status", {"key": "connecting"})
+    emit("steam.status", {"key": "connecting"})
     for raw in process.stdout:
         line = _decode(raw).rstrip("\r\n")
         log.append(line)
@@ -160,23 +161,27 @@ def _run(args: list[str]) -> list[str]:
                 qr.append(line)
                 continue
             if qr:  # the first quiet line after the code closes it
-                emit("vault.qr", {"matrix": qr_matrix(qr)})
+                emit("steam.qr", {"matrix": qr_matrix(qr)})
                 qr = None
             continue
         if "QR code" in line:
             qr = []
-            emit("vault.status", {"key": "scan"})
+            emit("steam.status", {"key": "scan"})
             continue
         if match := PROGRESS.match(line):
             emit("vault.progress", {"percent": float(match[1]), "file": Path(match[2]).name})
             continue
         if match := REMEMBER.search(line):
             settings.update(steam_user=match[1])
-            emit("vault.signed_in", {"user": match[1]})
+            emit("steam.signed_in", {"user": match[1]})
         if line.strip():
             emit("vault.log", line.strip())
     code = process.wait()
     _active = None
+    # whichever login file this run wrote is ours: remember it for the profile and for signing out
+    changed = [p for p, t in env.saved_logins().items() if saved_logins.get(p) != t]
+    if changed:
+        env.STORE_NOTE.write_text(changed[0].parent.parent.name, encoding="utf-8")
     if _cancelled:
         raise Failure("Cancelled")
     if code != 0:
@@ -186,7 +191,7 @@ def _run(args: list[str]) -> list[str]:
         if user and AUTH_TROUBLE.search(text):
             # the remembered login went stale: forget it and sign in again by QR
             settings.update(steam_user="")
-            emit("vault.status", {"key": "relogin"})
+            emit("steam.status", {"key": "relogin"})
             return _run(args)
         last = next((l.strip() for l in reversed(log) if l.strip()), f"exit code {code}")
         raise Failure(f"DepotDownloader failed: {last}")
@@ -217,10 +222,10 @@ def parse_manifest(text: str) -> list[dict]:
 
 
 @method("vault.files")
-def files(season: str, manifest: str) -> list[dict]:
+def files(season: str, manifest: str, refresh: bool = False) -> list[dict]:
     folder = settings.HOME / "manifests"
     cache = folder / f"manifest_{DEPOT}_{manifest}.txt"
-    if not cache.is_file():
+    if refresh or not cache.is_file():
         with _job():
             scratch = folder / f"tmp-{manifest}"
             _run(["-manifest", manifest, "-manifest-only", "-dir", str(scratch)])
@@ -239,15 +244,22 @@ def download(season: str, manifest: str, files: list[str]) -> dict:
         raise Failure("Pick at least one archive")
     target = _library(season, manifest)
     target.mkdir(parents=True, exist_ok=True)
+    job = {"season": season, "manifest": manifest, "files": len(files)}
     with _job():
-        filelist = settings.HOME / "manifests" / f"filelist-{manifest}.txt"
-        filelist.parent.mkdir(parents=True, exist_ok=True)
-        filelist.write_text("\n".join(files), encoding="utf-8")
-        _run(["-manifest", manifest, "-filelist", str(filelist), "-validate", "-dir", str(target)])
-    done = sorted(_completed(target) | set(files))
-    (target / MARKER).write_text(json.dumps({"season": season, "manifest": manifest, "files": done}, indent=1),
-                                 encoding="utf-8")
-    emit("vault.done", {"season": season, "manifest": manifest})
+        emit("vault.started", job)
+        ok = False
+        try:
+            filelist = settings.HOME / "manifests" / f"filelist-{manifest}.txt"
+            filelist.parent.mkdir(parents=True, exist_ok=True)
+            filelist.write_text("\n".join(files), encoding="utf-8")
+            _run(["-manifest", manifest, "-filelist", str(filelist), "-validate", "-dir", str(target)])
+            done = sorted(_completed(target) | set(files))
+            (target / MARKER).write_text(json.dumps({"season": season, "manifest": manifest, "files": done}, indent=1),
+                                         encoding="utf-8")
+            ok = True
+        finally:
+            # the window may have left the season page: it follows the job through these events
+            emit("vault.ended", {**job, "ok": ok, "cancelled": _cancelled})
     return {"dir": str(target), "files": done}
 
 
@@ -259,13 +271,6 @@ def cancel() -> bool:
         _active.kill()
         return True
     return False
-
-
-@method("vault.signout")
-def signout() -> dict:
-    # DepotDownloader keeps the refresh token in IsolatedStorage next to the exe
-    shutil.rmtree(env.depot_tool().parent / "IsolatedStorage", ignore_errors=True)
-    return settings.update(steam_user="")
 
 
 @method("vault.folder")

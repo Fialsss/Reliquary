@@ -12,6 +12,10 @@
 - Not included in this repository. Reliquary downloads the official `DepotDownloader_3.4.0` Windows x64 release on first use and runs it as a separate program.
 - License: GNU GPL-2.0.
 
+## Bundled in the release builds
+
+The installer and the portable exe carry the engine frozen with [PyInstaller](https://pyinstaller.org) (GPL-2.0 with the bootloader exception), which includes the Python runtime (PSF License) and [Pillow](https://python-pillow.org) (MIT-CMU). Electron and Chromium ship with their own license files inside the app folder.
+
 ## Fonts and libraries
 
 Inter and JetBrains Mono (SIL Open Font License 1.1, via Fontsource), React (MIT), Lucide icons (ISC), Electron (MIT). Versions are listed in `package.json`.

@@ -13,6 +13,17 @@
 
 > **Preview (0.1).** The Vault works end to end. Operators and the Armory are being built: see [Status](#status).
 
+## Download
+
+Grab the latest build from **[Releases](https://github.com/Fialsss/Reliquary/releases/latest)**:
+
+- `Reliquary-Setup-x.y.z.exe`: installer with Start menu and desktop shortcuts
+- `Reliquary-x.y.z-portable.exe`: a single file, no installation
+
+Both include everything they need, so you don't have to install Python or Node. Windows 10/11 64-bit.
+
+The builds are not code-signed yet, so Windows SmartScreen may show *"Windows protected your PC"* the first time. Click **More info → Run anyway**. The source of every build is this repository.
+
 ## What it does
 
 **The Vault: retired content, one archive at a time.** Steam still serves every Siege build published since 2015. Reliquary lists all 43 seasons, from Y1S0 Vanilla to Y11S2, asks Steam for the file list of the build you pick, and downloads only the archives you tick. You don't need the whole 60+ GB game. You sign in once by scanning a QR code with the Steam mobile app, right inside the window.
@@ -37,18 +48,18 @@ This is how the original **Glacier for the 552 Commando (Y5S4)** was recovered. 
 | Workspace detection (Ubisoft Connect, Steam libraries, Blender) | Working |
 | Operator roster | Reader needs an update for the latest game build (registry layout changed) |
 | Weapons, attachments, skins, charms, Blender scene with skin switcher | Method proven by hand on the 552 Commando; app integration next |
-| Installer with embedded Python | Planned (run from source for now) |
+| Installer and portable build, no dependencies | Working |
 
 ## Requirements
 
 - Windows 10 or 11, 64-bit
-- [Node.js](https://nodejs.org) 20 or newer
-- [Python](https://www.python.org) 3.10 or newer, with `pip install -r engine/requirements.txt`
 - **For the Vault:** a Steam account that owns Rainbow Six Siege
 - **For reading current builds:** an Oodle runtime (`oo2core_*_win64.dll`) you are licensed to use. It is not bundled. Set its path in Settings.
 - [Blender](https://www.blender.org) for exports
 
 ## Run from source
+
+You need [Node.js](https://nodejs.org) 20+ and [Python](https://www.python.org) 3.10+.
 
 ```powershell
 git clone https://github.com/Fialsss/Reliquary.git
@@ -59,6 +70,8 @@ npm run dev
 ```
 
 To use a Python that is not on `PATH`, set `RELIQUARY_PYTHON` to its full path.
+
+To build the installer and the portable exe into `dist/`, run `py -3 -m pip install pyinstaller`, then `npm run dist`.
 
 <details>
 <summary>Troubleshooting</summary>

@@ -54,6 +54,9 @@ def _handle(request: dict) -> None:
 
 
 def serve() -> None:
+    # frozen builds get no -X utf8: pin the pipes to UTF-8 so log lines and paths survive
+    sys.stdin.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8")
     workers = []
     for line in sys.stdin:
         line = line.strip()

@@ -12,3 +12,5 @@ __pycache__/
 *.blend
 *.blend1
 engine/**/output/
+engine-dist/
+build/

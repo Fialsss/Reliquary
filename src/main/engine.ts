@@ -28,9 +28,12 @@ export class Engine {
   }
 
   private start(): ChildProcess {
+    // Packaged builds carry the engine frozen by PyInstaller; from source it runs on the local Python.
     const root = app.isPackaged ? join(process.resourcesPath, 'engine') : join(app.getAppPath(), 'engine')
-    const python = process.env.RELIQUARY_PYTHON ?? 'python'
-    const child = spawn(python, ['-u', '-X', 'utf8', '-B', '-m', 'reliquary'], {
+    const [command, args] = app.isPackaged
+      ? [join(root, 'reliquary-engine.exe'), []]
+      : [process.env.RELIQUARY_PYTHON ?? 'python', ['-u', '-X', 'utf8', '-B', '-m', 'reliquary']]
+    const child = spawn(command, args, {
       cwd: root,
       env: { ...process.env, RELIQUARY_HOME: app.getPath('userData') },
       windowsHide: true

@@ -13,6 +13,17 @@
 
 > **Anteprima (0.1).** L'Archivio funziona dall'inizio alla fine. Operatori e Armeria sono in costruzione: vedi [Stato](#stato).
 
+## Download
+
+Scarica l'ultima versione dalle **[Releases](https://github.com/Fialsss/Reliquary/releases/latest)**:
+
+- `Reliquary-Setup-x.y.z.exe`: installer con collegamenti nel menu Start e sul desktop
+- `Reliquary-x.y.z-portable.exe`: un solo file, senza installazione
+
+Contengono già tutto quello che serve, quindi non devi installare Python o Node. Windows 10/11 a 64 bit.
+
+Le build non sono ancora firmate, quindi la prima volta Windows SmartScreen può mostrare *"PC protetto da Windows"*. Clicca **Ulteriori informazioni → Esegui comunque**. Il sorgente di ogni build è questa repository.
+
 ## Cosa fa
 
 **L'Archivio: contenuti ritirati, un archivio alla volta.** Steam conserva ancora ogni build di Siege pubblicata dal 2015. Reliquary elenca tutte le 43 stagioni, da Y1S0 Vanilla a Y11S2, chiede a Steam l'elenco dei file della build che scegli e scarica solo gli archivi che spunti. Non serve scaricare l'intero gioco da oltre 60 GB. L'accesso si fa una volta sola, inquadrando un QR con l'app di Steam direttamente dentro la finestra.
@@ -37,18 +48,18 @@
 | Rilevamento postazione (Ubisoft Connect, librerie Steam, Blender) | Funziona |
 | Roster operatori | Il lettore va aggiornato all'ultima build del gioco (è cambiato il formato del registro) |
 | Armi, accessori, skin, ciondoli, scena Blender con cambia-skin | Metodo dimostrato a mano sul 552 Commando, integrazione nell'app come prossimo passo |
-| Installer con Python incorporato | Previsto (per ora si avvia dal sorgente) |
+| Installer e versione portable, senza dipendenze | Funziona |
 
 ## Requisiti
 
 - Windows 10 o 11 a 64 bit
-- [Node.js](https://nodejs.org) 20 o successivo
-- [Python](https://www.python.org) 3.10 o successivo, con `pip install -r engine/requirements.txt`
 - **Per l'Archivio:** un account Steam che possiede Rainbow Six Siege
 - **Per leggere le build attuali:** un runtime Oodle (`oo2core_*_win64.dll`) che hai il diritto di usare. Non è incluso: imposta il percorso nelle Impostazioni.
 - [Blender](https://www.blender.org) per le esportazioni
 
 ## Avvio dal sorgente
+
+Servono [Node.js](https://nodejs.org) 20+ e [Python](https://www.python.org) 3.10+.
 
 ```powershell
 git clone https://github.com/Fialsss/Reliquary.git
@@ -59,6 +70,8 @@ npm run dev
 ```
 
 Per usare un Python che non è nel `PATH`, imposta `RELIQUARY_PYTHON` con il suo percorso completo.
+
+Per creare l'installer e l'exe portable in `dist/`: `py -3 -m pip install pyinstaller`, poi `npm run dist`.
 
 <details>
 <summary>Problemi comuni</summary>

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Box, Check, ChevronRight, Cpu, Database, FolderOpen, FolderSearch, Package, Search, Users, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft, Box, Check, ChevronDown, ChevronRight, Cpu, Database, FolderOpen, FolderSearch, Package, Search, Users, X } from 'lucide-react'
 import type { PageProps } from '../App'
 import { api, bytes, useEngineEvent, type Operator } from '../api'
 import { hueOf, Shards } from '../art'
@@ -27,6 +27,8 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
   const [indexing, setIndexing] = useState(false)
   const [open, setOpen] = useState<Operator | null>(null)
   const [query, setQuery] = useState('')
+  const [side, setSide] = useState<Side>('all')
+  const [portraits, setPortraits] = useState<Record<string, string>>({})
   const gameOk = !!status?.game.ok
   const oodleOk = !!status?.oodle.ok
 
@@ -45,6 +47,24 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
     load()
   }, [gameOk, oodleOk])
   useEngineEvent<Progress>('operators.progress', setProgress)
+
+  // the game's own portraits, once the roster and the index are there
+  const indexed = !!index?.indexed
+  useEffect(() => {
+    const order = (read.operators ?? []).flatMap((o) => [o.uid, `${o.uid}.emblem`]).filter((u) => !(u in portraits))
+    if (!indexed || !order.length) return
+    let alive = true
+    ;(async () => {
+      for (let i = 0; i < order.length && alive; i += 24) {
+        const part = order.slice(i, i + 24)
+        const batch = await api.call<Record<string, string>>('operators.icons', { uids: part }).catch(() => ({}) as Record<string, string>)
+        if (alive) setPortraits((all) => ({ ...all, ...Object.fromEntries(part.map((u) => [u, batch[u] ?? ''])) }))
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [read.operators, indexed])
 
   const pickOodle = async () => {
     const dll = await api.pick('file', ['dll'])
@@ -69,6 +89,8 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
     return (
       <OperatorPack
         operator={open}
+        portrait={portraits[open.uid]}
+        emblem={portraits[`${open.uid}.emblem`]}
         indexed={!!index?.indexed}
         blenderOk={!!status?.blender.ok}
         progress={progress?.uid === open.uid || progress?.step === 'cache' ? progress : null}
@@ -100,7 +122,25 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
       detail: indexing ? t('op.indexing', { done: progress?.done ?? 0, total: progress?.total ?? '…' }) : indexOk ? bytes(index!.bytes) : t('pipe.indexMissing')
     }
   ]
-  const shown = (read.operators ?? []).filter((o) => o.name.toLowerCase().includes(query.toLowerCase()))
+  const all = read.operators ?? []
+  const shown = all.filter((o) => o.name.toLowerCase().includes(query.toLowerCase()))
+  const sides = (['attack', 'defense'] as const).filter((s) => side === 'all' || side === s)
+  const sideCount = (s: Side) => all.filter((o) => s === 'all' || o.side === s).length
+  // the game's card: portrait, the operator's emblem, the name in capitals
+  const opCard = (o: Operator, i: number) => (
+    <button key={o.uid} className={`op ${o.side}`} style={{ '--i': Math.min(i, 16) } as React.CSSProperties} onClick={() => setOpen(o)}>
+      <span className="op-pic">
+        {portraits[o.uid] ? <img src={portraits[o.uid]} alt="" draggable={false} /> : <span className="op-initials">{o.name.slice(0, 2).toUpperCase()}</span>}
+      </span>
+      {portraits[`${o.uid}.emblem`] && <img className="op-emblem" src={portraits[`${o.uid}.emblem`]} alt="" draggable={false} />}
+      {o.blend && (
+        <em className="op-done" aria-label={t('pack.ready')}>
+          <Check size={12} strokeWidth={3} />
+        </em>
+      )}
+      <span className="op-name">{o.name}</span>
+    </button>
+  )
 
   return (
     <div className="stack">
@@ -110,10 +150,17 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
         sub={t('operators.sub')}
         right={
           read.state === 'ok' && (
-            <label className="search">
-              <Search size={15} />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('operators.search')} />
-            </label>
+            <div className="row op-filters">
+              <Segmented
+                value={side}
+                onChange={setSide}
+                options={(['all', 'attack', 'defense'] as const).map((s): [Side, string] => [s, `${t(`side.${s}`)} · ${sideCount(s)}`])}
+              />
+              <label className="search">
+                <Search size={15} />
+                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('operators.search')} />
+              </label>
+            </div>
           )
         }
       />
@@ -184,50 +231,127 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
         </div>
       )}
 
-      {read.state === 'ok' && (
-        <div className="grid ops">
-          {shown.map((o, i) => (
-            <button key={o.uid} className="op" style={{ '--i': Math.min(i, 16) } as React.CSSProperties} onClick={() => setOpen(o)}>
-              <div className="op-art">
-                <Shards seed={parseInt(o.uid.slice(-6), 16)} hue={hueOf(o.name)} />
-                <span>{o.name.slice(0, 2).toUpperCase()}</span>
-                {o.blend && (
-                  <em className="op-done" aria-label={t('pack.ready')}>
-                    <Check size={12} strokeWidth={3} />
-                  </em>
-                )}
-              </div>
-              <b>{o.name}</b>
-              <small className="mono">{o.uid}</small>
-            </button>
-          ))}
-        </div>
-      )}
+      {read.state === 'ok' &&
+        sides.map((s) => {
+          const list = shown.filter((o) => o.side === s)
+          return (
+            list.length > 0 && (
+              <section key={s} className="op-section">
+                <h2 className={`op-side ${s}`}>
+                  {t(s === 'attack' ? 'side.attackers' : 'side.defenders')} <small>{list.length}</small>
+                </h2>
+                <div className="grid ops">
+                  {list.map((o, i) => opCard(o, i))}
+                </div>
+              </section>
+            )
+          )
+        })}
+      {read.state === 'ok' && shown.some((o) => !o.side) && <div className="grid ops">{shown.filter((o) => !o.side).map(opCard)}</div>}
     </div>
   )
 }
 
-type Weapon = { uid: string; name: string; model: string; code: string; skins: { id: string; name: string }[] }
-type Charm = { id: string; name: string }
-type Tab = 'uniform' | 'headgear' | 'weapon' | 'charm'
+type Side = 'all' | 'attack' | 'defense'
+
+type Skin = { id: string; name: string; universal: boolean }
+type Sight = { uid: string; name: string; model: string }
+type Weapon = { uid: string; name: string; model: string; magazine: string; code: string; skins: Skin[]; sights: Sight[] }
+type Charm = { id: string; name: string; season: string }
+type Tab = 'uniform' | 'headgear' | 'weapon' | 'sight' | 'charm'
+/** A picture to fetch: the game's own (uniforms, headgear, sights) or a Blender preview (skins on their weapon, charms). */
+type Want = { key: string; id: string; method: 'operators.icons' | 'operators.thumbs'; model?: string; magazine?: string }
+
+const TABS: Tab[] = ['uniform', 'headgear', 'weapon', 'sight', 'charm']
+// charm families, from their names: ranked rewards (by rank), battle pass, esports, chibi, events, the rest
+const FAMILIES: [string, RegExp][] = [
+  ['ranked', /season reward|reward s\d|ranked|champion|diamond|emerald|platinum|copper|bronze/i],
+  ['battlepass', /battle ?pass|\bbp\b/i],
+  ['esports', /e-?sports?|pro ?league|pro ?team|major|invitational|\bsi\b|r6 ?cup|go4r6|proteams?/i],
+  ['chibi', /chibi/i],
+  ['event', /event|collection|halloween|christmas|snow|summer|chroma|showdown|doktor|lunar|new year/i]
+]
+const familyOf = (name: string) => FAMILIES.find(([, test]) => test.test(name))?.[0] ?? 'other'
+const yearOf = (c: Charm) => (c.season ? c.season.replace(/S\d$/, '') : 'none')
+
+/** A dropdown of checkboxes: nothing ticked shows everything, each tick narrows to what's ticked. */
+function Picker({ label, clear, options, picked, onChange }: { label: string; clear: string; options: [string, string, number][]; picked: Set<string>; onChange: (next: Set<string>) => void }) {
+  const box = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    const close = (e: PointerEvent) => box.current && !box.current.contains(e.target as Node) && (box.current.open = false)
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [])
+  const flip = (id: string) => {
+    const next = new Set(picked)
+    next.has(id) ? next.delete(id) : next.add(id)
+    onChange(next)
+  }
+  return (
+    <details className="picker" ref={box}>
+      <summary className="btn ghost small">
+        {label}
+        {picked.size > 0 && <span className="picker-count">{picked.size}</span>}
+        <ChevronDown size={14} />
+      </summary>
+      <div className="picker-menu">
+        {options.map(([id, text, n]) => (
+          <button key={id} className="picker-item" onClick={() => flip(id)}>
+            <span className={`check${picked.has(id) ? ' on' : ''}`}>{picked.has(id) && <Check size={12} strokeWidth={3} />}</span>
+            <span className="grow">{text}</span>
+            <span className="mono">{n}</span>
+          </button>
+        ))}
+        {picked.size > 0 && (
+          <button className="picker-clear" onClick={() => onChange(new Set())}>
+            {clear}
+          </button>
+        )}
+      </div>
+    </details>
+  )
+}
+const seasonOrder = (code: string) => {
+  const m = /^Y(\d+)S(\d)$/.exec(code)
+  return m ? Number(m[1]) * 10 + Number(m[2]) : -1
+}
 
 /**
  * One operator: pick uniforms and headgear from the game's own icons (Elite ones have the gold
- * background), weapon skins and charms from what the game has downloaded, then build a Blender pack:
- * every pick becomes a collection in one .blend.
+ * background), weapon skins, sights and charms, then build a Blender pack: every pick becomes a
+ * collection in one .blend. Skins and charms show a Blender preview of the real item.
  */
-function OperatorPack({ operator, indexed, blenderOk, progress, back }: { operator: Operator; indexed: boolean; blenderOk: boolean; progress: Progress | null; back: () => void }) {
+function OperatorPack({
+  operator,
+  portrait,
+  emblem,
+  indexed,
+  blenderOk,
+  progress,
+  back
+}: {
+  operator: Operator
+  portrait?: string
+  emblem?: string
+  indexed: boolean
+  blenderOk: boolean
+  progress: Progress | null
+  back: () => void
+}) {
   const { t } = useI18n()
   const { toast } = useSession()
   const [items, setItems] = useState<Cosmetics | null>(null)
   const [weapons, setWeapons] = useState<Weapon[] | null>(null)
   const [charms, setCharms] = useState<Charm[] | null>(null)
-  const [icons, setIcons] = useState<Record<string, string>>({})
+  const [pics, setPics] = useState<Record<string, string>>({})
   const [tab, setTab] = useState<Tab>('uniform')
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [skins, setSkins] = useState<Record<string, Set<string>>>({})
+  const [sights, setSights] = useState<Record<string, Set<string>>>({})
   const [charmPicks, setCharmPicks] = useState<Set<string>>(new Set())
   const [query, setQuery] = useState('')
+  const [years, setYears] = useState<Set<string>>(new Set())
+  const [families, setFamilies] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [blend, setBlend] = useState(operator.blend)
   const [folder, setFolder] = useState('')
@@ -243,66 +367,96 @@ function OperatorPack({ operator, indexed, blenderOk, progress, back }: { operat
       .catch((e: Error) => setError(e.message))
   }, [operator.uid])
 
-  // weapons and charms read the game's download cache: only once someone opens their tab
-  const cacheTab = tab === 'weapon' || tab === 'charm'
+  // weapons, sights and charms read the game's download cache: only once someone opens their tab
+  const cacheTab = tab === 'weapon' || tab === 'sight' || tab === 'charm'
   useEffect(() => {
     if (!cacheTab || !indexed || weapons) return
     api.call<Weapon[]>('operators.weapons', { uid: operator.uid }).then(setWeapons).catch((e: Error) => setError(e.message))
     api.call<Charm[]>('dcache.charms').then(setCharms).catch(() => setCharms([]))
   }, [cacheTab, indexed])
 
-  // pictures come in batches, the visible tab first; decoded once, then served from the app folder
-  const visible = useMemo(() => {
-    if (tab === 'weapon') return (weapons ?? []).flatMap((w) => w.skins.map((s) => s.id))
-    if (tab === 'charm') return (charms ?? []).map((c) => c.id)
-    return [...(items?.[tab] ?? []), ...(items?.[tab === 'uniform' ? 'headgear' : 'uniform'] ?? [])].map((i) => i.uid)
+  // pictures of the open tab: the game's icons come back in batches; previews Blender hasn't made yet
+  // arrive one by one as events (it renders them once, the open tab first, then they're served from disk)
+  const wanted = useMemo((): Want[] => {
+    const icon = (id: string): Want => ({ key: id, id, method: 'operators.icons' })
+    if (tab === 'uniform' || tab === 'headgear') return (items?.[tab] ?? []).map((i) => icon(i.uid))
+    if (tab === 'sight') return (weapons ?? []).flatMap((w) => w.sights.map((s) => icon(s.uid)))
+    if (tab === 'charm') return (charms ?? []).map((c) => ({ key: `c:${c.id}`, id: c.id, method: 'operators.thumbs' }))
+    return (weapons ?? []).flatMap((w) =>
+      ['', ...w.skins.map((s) => s.id)].map((id): Want => ({ key: `w:${w.model}:${id}`, id, method: 'operators.thumbs', model: w.model, magazine: w.magazine }))
+    )
   }, [tab, items, weapons, charms])
   useEffect(() => {
     if (!indexed) return
     let alive = true
-    const order = visible.filter((u) => !icons[u])
-    const method = cacheTab ? 'operators.thumbs' : 'operators.icons'
+    const groups = new Map<string, Want[]>()
+    for (const w of wanted.filter((w) => !(w.key in pics))) groups.set(`${w.method}|${w.model ?? ''}`, [...(groups.get(`${w.method}|${w.model ?? ''}`) ?? []), w])
     ;(async () => {
-      for (let i = 0; i < order.length && alive; i += 24) {
-        const args = cacheTab ? { ids: order.slice(i, i + 24) } : { uids: order.slice(i, i + 24) }
-        const batch = await api.call<Record<string, string>>(method, args).catch(() => ({}))
-        if (alive) setIcons((all) => ({ ...all, ...batch }))
+      for (const list of groups.values()) {
+        const size = list[0].method === 'operators.icons' ? 24 : list.length
+        for (let i = 0; i < list.length && alive; i += size) {
+          const part = list.slice(i, i + size)
+          const { method, model, magazine } = part[0]
+          const icons = method === 'operators.icons'
+          const args = icons ? { uids: part.map((w) => w.id) } : { ids: part.map((w) => w.id), model: model ?? '', magazine: magazine ?? '' }
+          const got = await api.call<Record<string, string>>(method, args).catch(() => ({}) as Record<string, string>)
+          const done = part.filter((w) => icons || got[w.id]).map((w) => [w.key, got[w.id] ?? ''])
+          if (alive) setPics((all) => ({ ...all, ...Object.fromEntries(done) }))
+        }
       }
     })()
     return () => {
       alive = false
     }
-  }, [visible, indexed])
+  }, [wanted, indexed])
+  useEngineEvent<{ id: string; model: string; uri: string }>('operators.preview', (e) =>
+    setPics((all) => ({ ...all, [e.model ? `w:${e.model}:${e.id}` : `c:${e.id}`]: e.uri }))
+  )
 
-  const toggle = (uid: string) => {
-    const next = new Set(picked)
-    next.has(uid) ? next.delete(uid) : next.add(uid)
-    setPicked(next)
-  }
-  const toggleSkin = (weapon: string, id: string) => {
-    const next = new Set(skins[weapon] ?? [])
+  const flip = (set: Set<string>, id: string) => {
+    const next = new Set(set)
     next.has(id) ? next.delete(id) : next.add(id)
-    setSkins({ ...skins, [weapon]: next })
+    return next
   }
-  const toggleCharm = (id: string) => {
-    const next = new Set(charmPicks)
-    next.has(id) ? next.delete(id) : next.add(id)
-    setCharmPicks(next)
-  }
+  const shownCharms = (charms ?? []).filter(
+    (c) =>
+      c.name.toLowerCase().includes(query.toLowerCase()) &&
+      (!years.size || years.has(yearOf(c))) &&
+      (!families.size || families.has(familyOf(c.name)))
+  )
+  const count = (test: (c: Charm) => boolean) => (charms ?? []).filter(test).length
+  const yearOptions = [...new Set((charms ?? []).map(yearOf))]
+    .sort((a, b) => (a === 'none' ? 1 : b === 'none' ? -1 : Number(b.slice(1)) - Number(a.slice(1))))
+    .map((y): [string, string, number] => [y, y === 'none' ? t('pack.noSeason') : t('pack.year', { y: y.slice(1) }), count((c) => yearOf(c) === y)])
+  const familyOptions = [...FAMILIES.map(([k]) => k), 'other'].map((k): [string, string, number] => [k, t(`pack.family.${k}`), count((c) => familyOf(c.name) === k)])
+  const seasons = useMemo(() => {
+    const by = new Map<string, Charm[]>()
+    shownCharms.forEach((c) => by.set(c.season, [...(by.get(c.season) ?? []), c]))
+    return [...by.entries()].sort((a, b) => seasonOrder(b[0]) - seasonOrder(a[0]))
+  }, [charms, query, years, families])
   const setAll = (on: boolean) => {
     if (tab === 'weapon') return setSkins(on ? Object.fromEntries((weapons ?? []).map((w) => [w.uid, new Set(['', ...w.skins.map((s) => s.id)])])) : {})
+    if (tab === 'sight') return setSights(on ? Object.fromEntries((weapons ?? []).map((w) => [w.uid, new Set(w.sights.map((s) => s.uid))])) : {})
     if (tab === 'charm') return setCharmPicks(on ? new Set(shownCharms.map((c) => c.id)) : new Set())
     const next = new Set(picked)
     items?.[tab].forEach((i) => (on ? next.add(i.uid) : next.delete(i.uid)))
     setPicked(next)
   }
-  const counts = {
+  const sum = (picks: Record<string, Set<string>>) => Object.values(picks).reduce((n, s) => n + s.size, 0)
+  const counts: Record<Tab, number> = {
     uniform: items?.uniform.filter((i) => picked.has(i.uid)).length ?? 0,
     headgear: items?.headgear.filter((i) => picked.has(i.uid)).length ?? 0,
-    weapon: Object.values(skins).reduce((n, s) => n + s.size, 0),
+    weapon: sum(skins),
+    sight: sum(sights),
     charm: charmPicks.size
   }
-  const shownCharms = (charms ?? []).filter((c) => c.name.toLowerCase().includes(query.toLowerCase()))
+  const total: Record<Tab, number | undefined> = {
+    uniform: items?.uniform.length,
+    headgear: items?.headgear.length,
+    weapon: weapons?.reduce((n, w) => n + w.skins.length, 0),
+    sight: weapons?.reduce((n, w) => n + w.sights.length, 0),
+    charm: charms?.length
+  }
 
   const create = async () => {
     setBusy(true)
@@ -311,9 +465,9 @@ function OperatorPack({ operator, indexed, blenderOk, progress, back }: { operat
       const r = await api.call<{ folder: string; blend: string }>('operators.pack', {
         uid: operator.uid,
         items: [...picked],
-        weapons: Object.entries(skins)
-          .filter(([, s]) => s.size)
-          .map(([uid, s]) => ({ uid, skins: [...s] })),
+        weapons: (weapons ?? [])
+          .map((w) => ({ uid: w.uid, skins: [...(skins[w.uid] ?? [])], sights: [...(sights[w.uid] ?? [])] }))
+          .filter((w) => w.skins.length || w.sights.length),
         charms: [...charmPicks]
       })
       setFolder(r.folder)
@@ -328,18 +482,26 @@ function OperatorPack({ operator, indexed, blenderOk, progress, back }: { operat
   const openBlender = () => api.call('operators.blender', { path: blend }).catch((e: Error) => toast(t(e.message), 'bad'))
   const phase = progress?.step === 'blend' ? 'pack.blending' : progress?.step === 'cache' ? 'pack.cacheReading' : 'pack.exporting'
   const share = progress && progress.step !== 'done' ? (progress.done / Math.max(progress.total, 1)) * (progress.step === 'blend' ? 0.4 : 0.6) + (progress.step === 'blend' ? 0.6 : 0) : 0
-  const count = { uniform: items?.uniform.length, headgear: items?.headgear.length, weapon: weapons?.reduce((n, w) => n + w.skins.length, 0), charm: charms?.length }
-  const card = (id: string, on: boolean, onClick: () => void, caption?: string, tag?: string) => (
-    <button key={id || 'none'} className={`cosmetic${on ? ' on' : ''}${caption ? ' captioned' : ''}`} onClick={onClick} disabled={busy} title={caption}>
-      {id && icons[id] ? <img src={icons[id]} alt="" draggable={false} /> : id ? <span className="cosmetic-wait" /> : <span className="cosmetic-none" />}
+
+  /** A pickable card: its picture (a shimmer while it's made), a check when picked, the name under it. */
+  const card = (key: string, on: boolean, onClick: () => void, opts: { caption?: string; tag?: string; shape: 'icon' | 'wide' | 'square'; render?: boolean }) => (
+    <button key={key} className={`cosmetic ${opts.shape}${opts.render ? ' render' : ''}${on ? ' on' : ''}`} onClick={onClick} disabled={busy} title={opts.caption}>
+      <span className="pic">{pics[key] ? <img src={pics[key]} alt="" draggable={false} /> : key in pics ? <span className="cosmetic-none" /> : <span className="cosmetic-wait" />}</span>
+      {opts.caption && <span className="cosmetic-caption">{opts.caption}</span>}
       {on && (
         <em className="cosmetic-check">
           <Check size={12} strokeWidth={3} />
         </em>
       )}
-      {tag && <span className="cosmetic-tag">{tag}</span>}
-      {caption && <span className="cosmetic-caption">{caption}</span>}
+      {opts.tag && <span className="cosmetic-tag">{opts.tag}</span>}
     </button>
+  )
+  const weaponTitle = (w: Weapon, n: number) => w.name || w.code || t('pack.weaponUnknown', { n: n + 1 })
+  const loading = (
+    <div className="center column">
+      <Spinner size={22} />
+      {progress?.step === 'cache' && <small>{t('pack.cacheReading', { done: progress.done, total: progress.total })}</small>}
+    </div>
   )
 
   return (
@@ -348,10 +510,11 @@ function OperatorPack({ operator, indexed, blenderOk, progress, back }: { operat
         <button className="back" onClick={back}>
           <ArrowLeft size={15} /> {t('pack.back')}
         </button>
-        <div className="detail-cover">
-          <Shards seed={parseInt(operator.uid.slice(-6), 16)} hue={hueOf(operator.name)} />
+        <div className={`detail-cover op-cover ${operator.side}`}>
+          {portrait ? <img src={portrait} alt="" draggable={false} /> : <Shards seed={parseInt(operator.uid.slice(-6), 16)} hue={hueOf(operator.name)} />}
           <div className="detail-cover-text">
-            <span className="mono">{operator.uid}</span>
+            {emblem && <img className="op-emblem" src={emblem} alt="" draggable={false} />}
+            <span>{t(`side.${operator.side || 'all'}`)}</span>
             <b>{operator.name}</b>
           </div>
         </div>
@@ -359,7 +522,7 @@ function OperatorPack({ operator, indexed, blenderOk, progress, back }: { operat
           <div className="label">{t('pack.title')}</div>
           <p>{t('pack.hint')}</p>
           <div className="pack-counts">
-            {(['uniform', 'headgear', 'weapon', 'charm'] as const).map((k) => (
+            {TABS.map((k) => (
               <span key={k}>
                 <b>{counts[k]}</b> {t(`pack.${k}s`)}
               </span>
@@ -402,17 +565,19 @@ function OperatorPack({ operator, indexed, blenderOk, progress, back }: { operat
         )}
         <div className="card cosmetics">
           <div className="cosmetics-head">
-            <Segmented
-              value={tab}
-              onChange={(v) => setTab(v as Tab)}
-              options={(['uniform', 'headgear', 'weapon', 'charm'] as const).map((k): [string, string] => [k, `${t(`pack.${k}s`)} · ${count[k] ?? '…'}`])}
-            />
+            <Segmented value={tab} onChange={setTab} options={TABS.map((k): [Tab, string] => [k, `${t(`pack.${k}s`)} · ${total[k] ?? '…'}`])} />
             <div className="row">
               {tab === 'charm' && (
                 <label className="search small">
                   <Search size={14} />
                   <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('pack.searchCharms')} />
                 </label>
+              )}
+              {tab === 'charm' && charms && (
+                <>
+                  <Picker label={t('pack.seasons')} clear={t('pack.none')} options={yearOptions} picked={years} onChange={setYears} />
+                  <Picker label={t('pack.kinds')} clear={t('pack.none')} options={familyOptions} picked={families} onChange={setFamilies} />
+                </>
               )}
               <button className="btn ghost small" onClick={() => setAll(true)} disabled={busy}>
                 {t('pack.all')}
@@ -422,49 +587,110 @@ function OperatorPack({ operator, indexed, blenderOk, progress, back }: { operat
               </button>
             </div>
           </div>
-          {cacheTab && <small className="cache-hint">{t('pack.cacheHint')}</small>}
+          {(tab === 'weapon' || tab === 'charm') && <small className="cache-hint">{t('pack.cacheHint')}</small>}
 
           {(tab === 'uniform' || tab === 'headgear') &&
             (!items ? (
-              <div className="center">
-                <Spinner size={22} />
-              </div>
+              loading
             ) : (
               <div className="cosmetic-grid" key={tab}>
-                {items[tab].map((item) => card(item.uid, picked.has(item.uid), () => toggle(item.uid), undefined, item.default ? t('pack.default') : undefined))}
+                {items[tab].map((item) =>
+                  card(item.uid, picked.has(item.uid), () => setPicked(flip(picked, item.uid)), { shape: 'icon', tag: item.default ? t('pack.default') : undefined })
+                )}
               </div>
             ))}
 
           {tab === 'weapon' &&
             (!weapons ? (
-              <div className="center column">
-                <Spinner size={22} />
-                {progress?.step === 'cache' && <small>{t('pack.cacheReading', { done: progress.done, total: progress.total })}</small>}
-              </div>
+              loading
             ) : (
-              <div className="cosmetic-grid scroll-sections">
-                {weapons.map((w, n) => (
-                  <section key={w.uid} className="weapon-block">
-                    <header>
-                      <b>{w.name || w.code || t('pack.weaponUnknown', { n: n + 1 })}</b>
-                      <small>{w.skins.length ? t('pack.skinsCount', { n: w.skins.length }) : t('pack.noSkins')}</small>
-                    </header>
-                    <div className="skin-grid">
-                      {card('', skins[w.uid]?.has('') ?? false, () => toggleSkin(w.uid, ''), t('pack.noSkin'))}
-                      {w.skins.map((s) => card(s.id, skins[w.uid]?.has(s.id) ?? false, () => toggleSkin(w.uid, s.id), s.name))}
-                    </div>
-                  </section>
-                ))}
+              <div className="cosmetic-grid scroll-sections" key={tab}>
+                {weapons.map((w, n) => {
+                  const on = skins[w.uid] ?? new Set<string>()
+                  const pick = (id: string) => setSkins({ ...skins, [w.uid]: flip(on, id) })
+                  const skinCard = (s: Skin) => card(`w:${w.model}:${s.id}`, on.has(s.id), () => pick(s.id), { caption: s.name, shape: 'wide', render: true })
+                  const groups: [string, Skin[]][] = [
+                    ['pack.universal', w.skins.filter((s) => s.universal)],
+                    ['pack.exclusive', w.skins.filter((s) => !s.universal)]
+                  ]
+                  return (
+                    <section key={w.uid} className="weapon-block">
+                      <header>
+                        <b>{weaponTitle(w, n)}</b>
+                        <small>{w.skins.length ? t('pack.skinsCount', { n: w.skins.length }) : t('pack.noSkins')}</small>
+                      </header>
+                      <div className="skin-grid">{card(`w:${w.model}:`, on.has(''), () => pick(''), { caption: t('pack.noSkin'), shape: 'wide', render: true })}</div>
+                      {groups.map(
+                        ([label, list]) =>
+                          list.length > 0 && (
+                            <div key={label} className="pack-group">
+                              <h3 className="group-head">
+                                {t(label)} <small>{list.length}</small>
+                              </h3>
+                              <div className="skin-grid">{list.map(skinCard)}</div>
+                            </div>
+                          )
+                      )}
+                    </section>
+                  )
+                })}
+              </div>
+            ))}
+
+          {tab === 'sight' &&
+            (!weapons ? (
+              loading
+            ) : (
+              <div className="cosmetic-grid scroll-sections" key={tab}>
+                {weapons
+                  .filter((w) => w.sights.length)
+                  .map((w, n) => {
+                    const on = sights[w.uid] ?? new Set<string>()
+                    return (
+                      <section key={w.uid} className="weapon-block">
+                        <header>
+                          <b>{weaponTitle(w, n)}</b>
+                          <small>{w.sights.length}</small>
+                        </header>
+                        <div className="skin-grid">
+                          {w.sights.map((s, i) =>
+                            card(s.uid, on.has(s.uid), () => setSights({ ...sights, [w.uid]: flip(on, s.uid) }), {
+                              caption: s.name || `${t('pack.sights')} ${i + 1}`,
+                              shape: 'wide',
+                              render: true
+                            })
+                          )}
+                        </div>
+                      </section>
+                    )
+                  })}
+                {!weapons.some((w) => w.sights.length) && <p className="cosmetic-empty">{t('pack.noSights')}</p>}
               </div>
             ))}
 
           {tab === 'charm' &&
             (!charms ? (
-              <div className="center">
-                <Spinner size={22} />
-              </div>
+              loading
             ) : (
-              <div className="cosmetic-grid">{shownCharms.map((c) => card(c.id, charmPicks.has(c.id), () => toggleCharm(c.id), c.name))}</div>
+              <div className="cosmetic-grid scroll-sections" key={tab}>
+                {seasons.map(([code, list]) => (
+                  <section key={code || 'other'} className="pack-group">
+                    <h3 className="group-head">
+                      {code ? (
+                        <>
+                          <span className="season-code">{code}</span> {t('pack.season', { y: code.slice(1, code.indexOf('S')), s: code.slice(code.indexOf('S') + 1) })}
+                        </>
+                      ) : (
+                        t('pack.otherSeason')
+                      )}{' '}
+                      <small>{list.length}</small>
+                    </h3>
+                    <div className="charm-grid">
+                      {list.map((c) => card(`c:${c.id}`, charmPicks.has(c.id), () => setCharmPicks(flip(charmPicks, c.id)), { caption: c.name, shape: 'square', render: true }))}
+                    </div>
+                  </section>
+                ))}
+              </div>
             ))}
         </div>
       </section>

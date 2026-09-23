@@ -53,5 +53,25 @@ class MatchSkinsTest(unittest.TestCase):
         self.assertEqual(self.files("", [1, 2], ["Kenya_2019"]), [])  # a tie between two codes: nothing
 
 
+class NamesTest(unittest.TestCase):
+    def test_side_is_the_list_before_property_2f73b62b(self):
+        before, after = bytes.fromhex("0d8152e3"), bytes.fromhex("2f73b62b")
+        noise = before + struct.pack("<I", 1) + b"\1" * 8 + b"\0" * 4  # the same tag elsewhere, not followed by it
+        attacker = noise + before + struct.pack("<I", 0) + after
+        defender = noise + before + struct.pack("<IQ", 1, 0x47A08A8F8C) + after
+        self.assertEqual((operators._side(attacker), operators._side(defender), operators._side(b"")), ("attack", "defense", ""))
+
+    def test_season_code_in_a_name(self):
+        from reliquary import dcache
+
+        self.assertEqual(dcache.season("W_Charm_Y8S2_CaptainLaserhawk"), "Y8S2")
+        self.assertEqual(dcache.season("W_Charm_y11s2_battlepass"), "Y11S2")
+        self.assertEqual(dcache.season("W_Charm_Chibi_Pulse"), "")
+
+    def test_sight_names_read_like_the_game(self):
+        self.assertEqual([operators._sight_name(n) for n in ("RedDot", "IRON SIGHT [PLACEHOLDER]", "EosHolo", "SCOPE 2.5x A")],
+                         ["Red Dot", "Iron Sight", "Holo", "Scope 2.5x A"])
+
+
 if __name__ == "__main__":
     unittest.main()

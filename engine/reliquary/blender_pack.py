@@ -1,8 +1,8 @@
 """Runs inside Blender: assemble an operator pack into one .blend.
 
 blender --background --python blender_pack.py -- <add-on folder> <pack.json>
-pack.json: {"name", "blend", "items": [{"kind": uniform | headgear | weapon | charm, "name", "folder",
-"group" (weapons: one sub-collection per weapon), "offset" [x, y, z]}]}. Every item becomes a collection; in each
+pack.json: {"name", "blend", "items": [{"kind": uniform | headgear | weapon | sight | charm, "name", "folder",
+"group" (weapons and sights: one sub-collection per weapon), "offset" [x, y, z]}]}. Every item becomes a collection; in each
 group the first stays visible and the others are hidden (eye icon in the Outliner), except charms, which all show.
 The R6-parser add-on imports each glTF with the Siege materials. Paths are saved relative, so the folder can move.
 """
@@ -28,7 +28,7 @@ for collection in list(bpy.data.collections):  # and its empty "Collection"
 
 root = bpy.data.collections.new(spec["name"])
 scene.collection.children.link(root)
-TITLES = {"uniform": "Uniforms", "headgear": "Headgear", "weapon": "Weapons", "charm": "Charms"}
+TITLES = {"uniform": "Uniforms", "headgear": "Headgear", "weapon": "Weapons", "sight": "Sights", "charm": "Charms"}
 groups = {}
 
 
@@ -64,9 +64,9 @@ for number, item in enumerate(spec["items"], 1):
     before = set(bpy.data.objects)
     for gltf in sorted(Path(item["folder"]).rglob("*.gltf")):
         import_siege_model(gltf)
-    # next to the operator; weapons turned side-on (they come pointing along Y, like in the hands)
+    # next to the operator; weapons and sights turned side-on (they come pointing along Y, like in the hands)
     place = Matrix.Translation(Vector(item.get("offset", (0, 0, 0))))
-    if item["kind"] == "weapon":
+    if item["kind"] in ("weapon", "sight"):
         place = place @ Matrix.Rotation(math.pi / 2, 4, "Z")
     for obj in set(bpy.data.objects) - before:
         if obj.parent is None:

@@ -90,11 +90,16 @@ def describe(doc: dict) -> dict | None:
     roles = {role for name in textures for role in ("Diffuse", "Normal", "Specular") if role in name}
     has_mesh = any("Data" in m.get("extras", {}) for m in doc.get("meshes", []))
     bones = sorted({n["extras"]["BoneId"] for n in doc.get("nodes", []) if "BoneId" in n.get("extras", {})})
+    patterns = sorted(t for t in textures if "WeaponPattern" in t)
     for material in materials:
         parts = material.split("_")
         if len(parts) > 2 and parts[1] == "Charm" and has_mesh and "Diffuse" in roles:
             return {"kind": "charm", "name": _pretty("_".join(parts[2:])), "material": material}
-        if len(parts) > 2 and parts[1] in CLASSES and {"Diffuse", "Normal"} <= roles and not any("WeaponPattern" in t for t in textures):
+        if len(parts) > 2 and parts[1] in CLASSES and patterns:  # a camo pattern (Aloha, Camo1950…) laid over the weapon
+            look = re.sub(r"_?(DiffuseMap|Diffuse|Map)?_?PC$", "", patterns[0].replace("W_WeaponPattern_", ""))
+            return {"kind": "skin", "class": parts[1], "code": parts[2], "name": _pretty(look), "material": material,
+                    "bones": bones, "pattern": True}
+        if len(parts) > 2 and parts[1] in CLASSES and {"Diffuse", "Normal"} <= roles:
             return {"kind": "skin", "class": parts[1], "code": parts[2], "name": _pretty("_".join(parts[3:]), parts[2]) or "Default",
                     "material": material, "bones": bones}
     return None
@@ -102,7 +107,7 @@ def describe(doc: dict) -> dict | None:
 
 def _signature(root: Path) -> str:
     files = [f for f in root.rglob("*.data")]
-    return f"{len(files)}:{max((f.stat().st_mtime_ns for f in files), default=0)}"
+    return f"2:{len(files)}:{max((f.stat().st_mtime_ns for f in files), default=0)}"  # 2: patterns are skins now
 
 
 def catalog(announce: bool = True) -> list[dict]:
@@ -143,13 +148,14 @@ def _open(file: str) -> tuple[dict, bytes]:
     return parsed
 
 
-def _texture_png(doc: dict, binary: bytes, tex: dict, path: Path) -> None:
-    """The best preset of a texture as PNG (BCn from the binary chunk, R6-parser's decoder)."""
+def _texture_png(doc: dict, binary: bytes, tex: dict, path: Path, low: bool = False, tile: int = 1) -> None:
+    """The best preset of a texture (the smallest with low: previews) as PNG, BCn through R6-parser's decoder.
+    tile: repeat it n x n, the way the game lays a camo pattern over the weapon's UVs."""
     from PIL import Image
     from src import texture
 
     extras = tex["extras"]
-    preset = next(extras[p] for p in PRESETS if p in extras)
+    preset = next(extras[p] for p in (PRESETS[::-1] if low else PRESETS) if p in extras)
     info, fmt = preset["CompiledTextureMapData"], preset["PixelFormat"]
     width, height = max(1, info["Width"] >> info["MipStart"]), max(1, info["Height"] >> info["MipStart"])
     if fmt not in texture.FORMATS:
@@ -161,38 +167,54 @@ def _texture_png(doc: dict, binary: bytes, tex: dict, path: Path) -> None:
         image = source.convert("RGBA")
     if fmt == 6 and preset.get("TextureMapType") == 1:
         image = texture.reconstruct_bc5_z(image)  # BC5 normals keep X and Y only
+    if tile > 1:
+        image.thumbnail((2048 // tile, 2048 // tile))  # the tiled sheet stays within 2048 px
+        sheet = Image.new(image.mode, (image.width * tile, image.height * tile))
+        for n in range(tile * tile):
+            sheet.paste(image, ((n % tile) * image.width, (n // tile) * image.height))
+        image = sheet
     image.save(path)
 
 
-def textures(file: str, out: Path) -> dict[str, str]:
-    """Diffuse, normal and specular of a cache document, saved as PNG next to where the glTF will be."""
+def textures(file: str, out: Path, low: bool = False) -> dict[str, str]:
+    """Diffuse, normal and specular of a cache document, saved as PNG next to where the glTF will be.
+    A camo pattern is its diffuse alone, repeated as often as its material says (CamoTilingU, 4 so far)."""
     doc, binary = _open(file)
     out.mkdir(parents=True, exist_ok=True)
+    params = next((m.get("extras", {}).get("ShaderTemplateParams", {}) for m in doc.get("materials", [])), {})
+    pattern = any("WeaponPattern" in t.get("name", "") for t in doc.get("textures", []))
+    tile = max(1, min(8, round(params.get("CamoTilingU", 4)))) if pattern else 1
     roles = {}
     for tex in doc.get("textures", []):
         name = tex.get("name", "")
         role = next((r.lower() for r in ("Diffuse", "Normal", "Specular") if r in name), None)
         if role and role not in roles:
-            _texture_png(doc, binary, tex, out / f"{name}.png")
+            _texture_png(doc, binary, tex, out / f"{name}.png", low, tile)
             roles[role] = f"{name}.png"
     return roles
 
 
-def charm_gltf(file: str, out: Path) -> Path:
+def charm_gltf(file: str, out: Path, low: bool = False) -> Path:
     """A charm as a standard glTF: its CompiledMesh through R6-parser's mesh reader and writer."""
     from src.gltf import write_gltf
     from src.mesh import read_mesh_with_islands
     from src.model import MeshPart
 
     doc, binary = _open(file)
+    # glows and sparkles (…_Emissive, alpha-tested) need the game's effect shaders: drawn plain they'd hide the charm
+    effects = {n for n, m in enumerate(doc.get("materials", []))
+               if m.get("name", "").endswith("_Emissive") or m.get("extras", {}).get("AlphaTestEnabled")}
     parts = []
     for number, mesh in enumerate(doc.get("meshes", [])):
         if "Data" not in mesh.get("extras", {}):
             continue
         body = _view(doc, binary, mesh["extras"]["Data"])
         verts, uvs, normals, tangents, _, _, islands = read_mesh_with_islands(struct.pack("<II", 0xFC9E1595, len(body)) + body)
+        slots = [int(m) for m in mesh["extras"].get("GltfMaterials", [])]  # island material id → document material
+        kept = [i for i in islands if (slots[i.material_id] if i.material_id < len(slots) else -1) not in effects]
+        islands = kept or islands
         parts.append(MeshPart(uid=number, vertices=verts, uvs=uvs, normals=normals, islands=islands, tangents=tuple(tangents)))
-    roles = textures(file, out)
+    roles = textures(file, out, low)
     return write_gltf(0xC4A12, parts, out, **roles)
 
 
@@ -216,12 +238,22 @@ def thumbnail(file: str, path: Path, size: int = 176) -> None:
     image.save(path, quality=86)
 
 
+SEASON = re.compile(r"(?<![A-Za-z0-9])Y(\d{1,2})S(\d)(?![0-9])", re.I)
+
+
+def season(material: str) -> str:
+    """The season code in an item's name (W_Charm_Y8S2_CaptainLaserhawk → Y8S2), or ""."""
+    found = SEASON.search(material.replace("_", " "))
+    return f"Y{int(found[1])}S{found[2]}" if found else ""
+
+
 @method("dcache.charms")
 def charms() -> list[dict]:
-    """The charms the game has downloaded, by name."""
+    """The charms the game has downloaded, by name, with the season they came out in when the name says it."""
     seen, out = set(), []
     for entry in catalog():
         if entry["kind"] == "charm" and entry["material"] not in seen:
             seen.add(entry["material"])
-            out.append({"id": entry["file"], "name": entry["name"]})
+            name = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", SEASON.sub("", entry["name"]).strip())  # CaptainLaserhawk → Captain Laserhawk
+            out.append({"id": entry["file"], "name": name or entry["name"], "season": season(entry["material"])})
     return sorted(out, key=lambda c: c["name"].lower())

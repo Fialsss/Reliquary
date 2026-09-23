@@ -5,5 +5,5 @@ from reliquary import art, dcache, env, legacy, operators, settings, steam, vaul
 from reliquary.rpc import emit, serve
 
 threading.Thread(target=vault.prefetch_tool, daemon=True).start()
-emit("engine.ready", {"version": "0.6.0"})
+emit("engine.ready", {"version": "1.0.0"})
 serve()

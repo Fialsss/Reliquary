@@ -28,7 +28,7 @@ Le build non sono ancora firmate, quindi la prima volta Windows SmartScreen può
 
 Al primo avvio l'app apre una guida passo per passo, e il pulsante **?** nella barra in alto la riapre quando vuoi. In breve:
 
-1. **Accedi con Steam.** Premi *Accedi con Steam* in alto a destra e inquadra il QR con l'app di Steam sul telefono (scudo → *Scansiona un codice QR*). L'account deve possedere Rainbow Six Siege su Steam. Poi in alto compaiono il tuo nome Steam e la tua foto.
+1. **Accedi con Steam.** Premi *Accedi* in alto a destra, poi inquadra il QR con l'app di Steam sul telefono (scudo → *Scansiona un codice QR*) oppure passa a *Password* e scrivi nome account e password; codici Steam Guard e conferme sul telefono vengono chiesti direttamente nella finestra. L'account deve possedere Rainbow Six Siege su Steam. Poi in alto compaiono il tuo nome Steam e la tua foto.
 2. **Apri l'Archivio** e scegli una stagione. Ogni scheda è la build originale uscita in quel periodo.
 3. **Carica l'elenco dei file.** Reliquary chiede a Steam quali archivi contiene quella build, con le dimensioni.
 4. **Spunta quello che ti serve.** Gli archivi *Dati* sono piccoli (tabelle, materiali, riferimenti), le *Texture* pesano da 2 a 9 GB l'una, i *Modelli* sono le geometrie 3D. Per una prima prova scegli un file piccolo.
@@ -61,6 +61,9 @@ Per ora gli archivi scaricati restano sul tuo disco. Aprirli e portare skin, arm
 | Roster operatori | Il lettore va aggiornato all'ultima build del gioco (è cambiato il formato del registro) |
 | Armi, accessori, skin, ciondoli, scena Blender con cambia-skin | Metodo dimostrato a mano sul 552 Commando, integrazione nell'app come prossimo passo |
 | Installer e versione portable, senza dipendenze | Funziona |
+| Accesso Steam: codice QR, oppure nome account e password con Steam Guard | Funziona |
+| Lettura dei file attuali del gioco senza Oodle (ooz open source incluso) | Funziona |
+| Spazio su disco: vedere ed eliminare archivi scaricati e cache | Funziona |
 
 ## Requisiti
 
@@ -109,7 +112,7 @@ La finestra non accede mai direttamente alla rete o al disco. Ogni azione è una
 
 - **Non contiene file del gioco.** Tutto viene letto dalla tua installazione o scaricato da Steam con il tuo account.
 - Non include Oodle, che è proprietario. Include invece **ooz**, un decompressore open source per la stessa compressione, verificato con risultati identici sui file attuali del gioco.
-- Le immagini delle stagioni vengono caricate al momento dalla wiki Fandom di Rainbow Six e non sono salvate nella repository.
+- Non include le immagini delle stagioni: l'app le carica al momento dalla wiki Fandom di Rainbow Six. Le schermate di questo README le mostrano, © Ubisoft.
 - Gli asset estratti appartengono a Ubisoft. Usali per render personali e fan art, e non ridistribuirli.
 
 ## Crediti

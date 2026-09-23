@@ -1,5 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronDown, ExternalLink, FolderOpen, Info, LogIn, LogOut, Smartphone, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  FolderOpen,
+  Info,
+  LogIn,
+  LogOut,
+  Mail,
+  ShieldCheck,
+  Smartphone,
+  X
+} from 'lucide-react'
 import { api, useEngineEvent, type Settings } from './api'
 import { useI18n, type Lang } from './i18n'
 import { Segmented, Spinner, type Tone } from './ui'
@@ -7,11 +23,25 @@ import { Segmented, Spinner, type Tone } from './ui'
 export type Profile = { user: string; steamid: string; name: string; avatar: string }
 export type Job = { season: string; manifest: string; files: number; percent: number; file: string }
 type Toast = { id: number; text: string; tone: Tone }
-type Login = { open: boolean; qr: string[] | null; phase: string; error: string; done: boolean }
+type Mode = 'qr' | 'password'
+type Code = { kind: 'app' | 'email'; retry: boolean }
+type Login = {
+  open: boolean
+  mode: Mode
+  busy: boolean // a sign-in started from this dialog is running
+  qr: string[] | null
+  phase: string
+  code: Code | null
+  error: string
+  user: string // remembered for the form after an error; the password never is
+  done: boolean
+  flying: boolean
+}
 
 type Session = {
   profile: Profile | null
   job: Job | null
+  arrived: boolean
   signIn: () => void
   signOut: () => Promise<void>
   toast: (text: string, tone?: Tone) => void
@@ -20,7 +50,7 @@ type Session = {
 const Context = createContext<Session | null>(null)
 export const useSession = () => useContext(Context)!
 
-const CLOSED: Login = { open: false, qr: null, phase: '', error: '', done: false }
+const CLOSED: Login = { open: false, mode: 'qr', busy: false, qr: null, phase: '', code: null, error: '', user: '', done: false, flying: false }
 
 /** Steam account, background downloads and notifications, shared by every page. */
 export function SessionProvider({ children }: { children: ReactNode }) {
@@ -29,7 +59,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [job, setJob] = useState<Job | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [login, setLogin] = useState<Login>(CLOSED)
+  const [arrived, setArrived] = useState(false)
   const nextToast = useRef(1)
+  const current = useRef(login) // event handlers read the latest dialog state through this
+  current.current = login
 
   const toast = useCallback((text: string, tone: Tone = 'info') => {
     const id = nextToast.current++
@@ -41,18 +74,46 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     api.call<Profile | null>('steam.profile').then(setProfile).catch(() => undefined)
   }, [])
 
+  // success: the badge plays, then the avatar flies to the account pill (see Welcome)
   const welcome = (p: Profile | null) => {
     setProfile(p)
-    setLogin((l) => ({ ...l, qr: null, done: true }))
-    setTimeout(() => setLogin(CLOSED), 1400)
+    setLogin((l) => ({ ...l, busy: false, qr: null, code: null, error: '', done: true }))
+    setTimeout(() => setLogin((l) => (l.done ? { ...l, flying: true } : l)), 1700)
+  }
+  const landed = () => {
+    setLogin(CLOSED)
+    setArrived(true)
+    setTimeout(() => setArrived(false), 900)
+  }
+  const fail = (e: Error) => {
+    if (e.message === 'Cancelled') return
+    setLogin((l) => (l.open ? { ...l, busy: false, qr: null, code: null, phase: '', error: e.message } : l))
   }
 
-  const signIn = () => {
-    setLogin({ ...CLOSED, open: true })
-    api
-      .call<Profile | null>('steam.login')
-      .then(welcome)
-      .catch((e: Error) => setLogin((l) => (l.open ? { ...l, qr: null, error: e.message } : l)))
+  const startQr = () => {
+    setLogin((l) => ({ ...CLOSED, open: true, user: l.user, busy: true }))
+    api.call<Profile | null>('steam.login').then(welcome).catch(fail)
+  }
+  const startPassword = (username: string, password: string) => {
+    setLogin((l) => ({ ...l, mode: 'password', busy: true, error: '', phase: 'connecting', code: null, user: username }))
+    api.call<Profile | null>('steam.login', { username, password }).then(welcome).catch(fail)
+  }
+  // switching method stops whatever the other one was waiting for
+  const switchMode = async (mode: Mode) => {
+    await api.call('vault.cancel')
+    if (mode === 'qr') {
+      await new Promise((r) => setTimeout(r, 300))
+      return startQr()
+    }
+    setLogin((l) => ({ ...l, mode, busy: false, qr: null, code: null, phase: '', error: '' }))
+  }
+  const sendCode = (code: string) => {
+    setLogin((l) => ({ ...l, code: null, phase: 'connecting' }))
+    api.call('steam.code', { code })
+  }
+  const close = () => {
+    api.call('vault.cancel')
+    setLogin(CLOSED)
   }
 
   const signOut = async () => {
@@ -62,14 +123,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }
 
   // Steam can ask for a scan in the middle of any job: the dialog opens by itself.
-  useEngineEvent<{ matrix: string[] }>('steam.qr', (d) => setLogin((l) => ({ ...l, open: true, qr: d.matrix, error: '' })))
+  useEngineEvent<{ matrix: string[] }>('steam.qr', (d) => setLogin((l) => ({ ...l, open: true, mode: 'qr', qr: d.matrix, error: '' })))
   useEngineEvent<{ key: string }>('steam.status', (d) => setLogin((l) => ({ ...l, phase: d.key })))
+  useEngineEvent<Code>('steam.code', (d) => setLogin((l) => ({ ...l, open: true, code: d })))
   useEngineEvent('steam.signed_in', () => {
     api.call<Profile | null>('steam.profile', { refresh: true }).then((p) => {
+      const l = current.current
+      // a sign-in started by a Vault job rather than by this dialog: celebrate here too
+      if (l.open && !l.busy && !l.done) welcome(p)
+      else if (!l.open && p) toast(t('toast.welcome', { name: p.name }), 'ok')
       setProfile(p)
-      if (p) toast(t('toast.welcome', { name: p.name }), 'ok')
-      setLogin((l) => (l.open && l.qr ? { ...l, qr: null, done: true } : l))
-      setTimeout(() => setLogin((l) => (l.done ? CLOSED : l)), 1400)
     })
   })
 
@@ -84,17 +147,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEngineEvent('engine.exit', () => toast(t('toast.engineOffline'), 'bad'))
 
   return (
-    <Context.Provider value={{ profile, job, signIn, signOut, toast }}>
+    <Context.Provider value={{ profile, job, arrived, signIn: startQr, signOut, toast }}>
       {children}
       {login.open && (
         <LoginDialog
           login={login}
           profile={profile}
-          retry={signIn}
-          close={() => {
-            api.call('vault.cancel')
-            setLogin(CLOSED)
-          }}
+          close={close}
+          retryQr={startQr}
+          switchMode={switchMode}
+          startPassword={startPassword}
+          sendCode={sendCode}
+          landed={landed}
         />
       )}
       <div className="toasts" aria-live="polite">
@@ -109,7 +173,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   )
 }
 
-function LoginDialog({ login, profile, retry, close }: { login: Login; profile: Profile | null; retry: () => void; close: () => void }) {
+type DialogProps = {
+  login: Login
+  profile: Profile | null
+  close: () => void
+  retryQr: () => void
+  switchMode: (mode: Mode) => void
+  startPassword: (username: string, password: string) => void
+  sendCode: (code: string) => void
+  landed: () => void
+}
+
+function LoginDialog({ login, profile, close, retryQr, switchMode, startPassword, sendCode, landed }: DialogProps) {
   const { t } = useI18n()
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !login.done && close()
@@ -117,54 +192,215 @@ function LoginDialog({ login, profile, retry, close }: { login: Login; profile: 
     return () => removeEventListener('keydown', onKey)
   }, [login.done])
 
-  return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && !login.done && close()}>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label={t('login.title')}>
-        {!login.done && (
-          <button className="dialog-close" onClick={close} aria-label={t('window.close')}>
-            <X size={16} />
-          </button>
-        )}
-        {login.done ? (
-          <div className="login-done">
-            <Avatar profile={profile} size={84} />
-            <b>{t('login.welcome', { name: profile?.name ?? '' })}</b>
-            <small>{t('login.ready')}</small>
-          </div>
-        ) : login.error ? (
-          <div className="login-state">
-            <span className="tile-icon warn">
-              <AlertTriangle size={18} />
-            </span>
-            <b>{t('login.failed')}</b>
-            <p className="mono">{login.error}</p>
-            <button className="btn primary" onClick={retry}>
-              {t('common.retry')}
-            </button>
-          </div>
-        ) : login.qr ? (
-          <>
-            <div className="label">{t('login.title')}</div>
-            <div className="login-qr">
-              <QrCode matrix={login.qr} />
-            </div>
-            <ol className="login-steps">
-              <li>{t('login.step1')}</li>
-              <li>{t('login.step2')}</li>
-              <li>{t('login.step3')}</li>
-            </ol>
-            <span className="chip info dot">
-              <Smartphone size={12} /> {t('steam.waiting')}
-            </span>
-          </>
-        ) : (
-          <div className="login-state">
-            <Spinner size={28} />
-            <b>{t(`steam.phase.${login.phase || 'connecting'}`)}</b>
-            <small>{t('login.owns')}</small>
-          </div>
-        )}
+  let body: ReactNode
+  if (login.done) body = <Welcome profile={profile} flying={login.flying} landed={landed} />
+  else if (login.code) body = <CodeForm code={login.code} send={sendCode} />
+  else if (login.phase === 'confirm') body = <Confirm />
+  else if (login.mode === 'password' && !login.busy) body = <PasswordForm user={login.user} error={login.error} submit={startPassword} />
+  else if (login.mode === 'qr' && login.error)
+    body = (
+      <div className="login-state">
+        <span className="tile-icon warn">
+          <AlertTriangle size={18} />
+        </span>
+        <b>{t('login.failed')}</b>
+        <p>{t(login.error)}</p>
+        <button className="btn primary" onClick={retryQr}>
+          {t('common.retry')}
+        </button>
       </div>
+    )
+  else if (login.mode === 'qr' && login.qr)
+    body = (
+      <>
+        <div className="login-qr">
+          <QrCode matrix={login.qr} />
+        </div>
+        <ol className="login-steps">
+          <li>{t('login.step1')}</li>
+          <li>{t('login.step2')}</li>
+          <li>{t('login.step3')}</li>
+        </ol>
+        <span className="chip info dot">
+          <Smartphone size={12} /> {t('steam.waiting')}
+        </span>
+      </>
+    )
+  else
+    body = (
+      <div className="login-state">
+        <Spinner size={28} />
+        <b>{t(`steam.phase.${login.phase || 'connecting'}`)}</b>
+        <small>{t('login.owns')}</small>
+      </div>
+    )
+
+  return (
+    <div className={`overlay${login.flying ? ' flying' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && !login.done && close()}>
+      <div className={`dialog login-dialog${login.flying ? ' flying' : ''}`} role="dialog" aria-modal="true" aria-label={t('login.title')}>
+        {!login.done && (
+          <>
+            <button className="dialog-close" onClick={close} aria-label={t('window.close')}>
+              <X size={16} />
+            </button>
+            <div className="label">{t('login.title')}</div>
+            {!login.code && login.phase !== 'confirm' && (
+              <Segmented<Mode>
+                value={login.mode}
+                onChange={switchMode}
+                options={[
+                  ['qr', t('login.tabQr')],
+                  ['password', t('login.tabPassword')]
+                ]}
+              />
+            )}
+          </>
+        )}
+        <div className="login-body" key={login.done ? 'done' : `${login.mode}-${login.code ? 'code' : login.phase}`}>
+          {body}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PasswordForm({ user, error, submit }: { user: string; error: string; submit: (u: string, p: string) => void }) {
+  const { t } = useI18n()
+  const [username, setUsername] = useState(user)
+  const [password, setPassword] = useState('')
+  const [show, setShow] = useState(false)
+  return (
+    <form
+      className="login-form"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (username.trim() && password) submit(username.trim(), password)
+      }}
+    >
+      <label>
+        <span>{t('login.username')}</span>
+        <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus={!user} autoComplete="username" spellCheck={false} />
+      </label>
+      <label>
+        <span>{t('login.password')}</span>
+        <span className="password-field">
+          <input
+            type={show ? 'text' : 'password'}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoFocus={!!user}
+            autoComplete="current-password"
+          />
+          <button type="button" onClick={() => setShow(!show)} aria-label={t(show ? 'login.hide' : 'login.show')} data-tip={t(show ? 'login.hide' : 'login.show')}>
+            {show ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
+        </span>
+      </label>
+      {error && (
+        <p className="login-error">
+          <AlertTriangle size={14} /> {t(error)}
+        </p>
+      )}
+      <button className="btn primary wide" type="submit" disabled={!username.trim() || !password}>
+        <LogIn size={15} /> {t('account.signIn')}
+      </button>
+      <small className="login-note">
+        <ShieldCheck size={13} /> {t('login.passwordNote')}
+      </small>
+    </form>
+  )
+}
+
+function CodeForm({ code, send }: { code: Code; send: (c: string) => void }) {
+  const { t } = useI18n()
+  const [value, setValue] = useState('')
+  return (
+    <form
+      className="login-state code-form"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (value.length === 5) send(value)
+      }}
+    >
+      <span className="tile-icon">{code.kind === 'app' ? <Smartphone size={18} /> : <Mail size={18} />}</span>
+      <b>{t(code.kind === 'app' ? 'login.codeApp' : 'login.codeEmail')}</b>
+      <small>{t(code.kind === 'app' ? 'login.codeAppHint' : 'login.codeEmailHint')}</small>
+      {code.retry && (
+        <p className="login-error">
+          <AlertTriangle size={14} /> {t('login.codeWrong')}
+        </p>
+      )}
+      <input
+        className="code-input"
+        value={value}
+        onChange={(e) => setValue(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5))}
+        autoFocus
+        spellCheck={false}
+        aria-label={t('login.codeApp')}
+      />
+      <button className="btn primary wide" type="submit" disabled={value.length !== 5}>
+        {t('login.confirm')}
+      </button>
+    </form>
+  )
+}
+
+function Confirm() {
+  const { t } = useI18n()
+  return (
+    <div className="login-state">
+      <span className="phone-pulse">
+        <Smartphone size={26} />
+      </span>
+      <b>{t('login.confirmTitle')}</b>
+      <small>{t('login.confirmBody')}</small>
+    </div>
+  )
+}
+
+/** The welcome: a ring draws, the avatar pops in with sparks, then it flies into the account pill. */
+function Welcome({ profile, flying, landed }: { profile: Profile | null; flying: boolean; landed: () => void }) {
+  const { t } = useI18n()
+  const avatar = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    const el = avatar.current
+    if (!flying || !el) return
+    const from = el.getBoundingClientRect()
+    const to = document.querySelector('.account .avatar')?.getBoundingClientRect()
+    if (!to) return landed()
+    const dx = to.left + to.width / 2 - (from.left + from.width / 2)
+    const dy = to.top + to.height / 2 - (from.top + from.height / 2)
+    const flight = el.animate(
+      [
+        { transform: 'translate(0, 0) scale(1)' },
+        { transform: `translate(${dx * 0.55}px, ${dy * 0.35}px) scale(${(to.width / from.width + 1) / 2})`, offset: 0.55 },
+        { transform: `translate(${dx}px, ${dy}px) scale(${to.width / from.width})` }
+      ],
+      { duration: 700, easing: 'cubic-bezier(0.65, 0, 0.25, 1)', fill: 'forwards' }
+    )
+    flight.onfinish = landed
+    return () => flight.cancel()
+  }, [flying])
+
+  return (
+    <div className="welcome-anim">
+      <div className="welcome-badge">
+        <svg className="welcome-ring" viewBox="0 0 120 120" aria-hidden="true">
+          <circle cx="60" cy="60" r="56" />
+        </svg>
+        {Array.from({ length: 10 }, (_, i) => (
+          <i key={i} className="spark" style={{ '--a': `${i * 36}deg` } as React.CSSProperties} />
+        ))}
+        <span ref={avatar} className="welcome-avatar">
+          <Avatar profile={profile} size={88} />
+        </span>
+        <span className="welcome-check">
+          <Check size={14} strokeWidth={3} />
+        </span>
+      </div>
+      <b>{t('login.welcome', { name: profile?.name ?? '' })}</b>
+      <small>{t('login.ready')}</small>
     </div>
   )
 }
@@ -192,7 +428,7 @@ export function Avatar({ profile, size = 30 }: { profile: Profile | null; size?:
 /** The pill in the top bar: sign-in button, or the Steam profile with its menu. */
 export function AccountPill() {
   const { t, lang, setLang } = useI18n()
-  const { profile, signIn, signOut } = useSession()
+  const { profile, arrived, signIn, signOut } = useSession()
   const [open, setOpen] = useState(false)
   const menu = useRef<HTMLDivElement>(null)
 
@@ -220,7 +456,7 @@ export function AccountPill() {
 
   return (
     <div className="account-wrap" ref={menu}>
-      <button className={`account${open ? ' open' : ''}`} onClick={() => setOpen(!open)} aria-expanded={open}>
+      <button className={`account${open ? ' open' : ''}${arrived ? ' arrived' : ''}`} onClick={() => setOpen(!open)} aria-expanded={open}>
         <span className="avatar-dot">
           <Avatar profile={profile} />
         </span>

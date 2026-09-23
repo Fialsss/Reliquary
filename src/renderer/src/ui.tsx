@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { Check as CheckIcon } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Check as CheckIcon, Trash2 } from 'lucide-react'
 
 export type Tone = 'ok' | 'warn' | 'bad' | 'info' | 'muted'
 
@@ -40,6 +40,27 @@ export function Check({ checked, onChange, label }: { checked: boolean; onChange
   return (
     <button className={`check${checked ? ' on' : ''}`} role="checkbox" aria-checked={checked} aria-label={label} onClick={onChange}>
       {checked && <CheckIcon size={12} strokeWidth={3} />}
+    </button>
+  )
+}
+
+/** A destructive action in two clicks: the first arms it (red, "confirm"), the second runs it. */
+export function ConfirmButton({ label, confirm, onConfirm, small = true }: { label: string; confirm: string; onConfirm: () => void; small?: boolean }) {
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    if (!armed) return
+    const timer = setTimeout(() => setArmed(false), 3500)
+    return () => clearTimeout(timer)
+  }, [armed])
+  return (
+    <button
+      className={`btn ghost danger${small ? ' small' : ''}${armed ? ' armed' : ''}`}
+      onClick={() => {
+        if (armed) onConfirm()
+        setArmed(!armed)
+      }}
+    >
+      <Trash2 size={14} /> {armed ? confirm : label}
     </button>
   )
 }

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight, CircleHelp, ExternalLink, FolderOpen, FolderTree, Info, LogIn, LogOut, RotateCcw, UserRound } from 'lucide-react'
+import { ChevronRight, CircleHelp, ExternalLink, FolderOpen, FolderTree, HardDrive, Info, LogIn, LogOut, RotateCcw, UserRound } from 'lucide-react'
 import type { PageProps } from '../App'
-import { api, type Settings as Values } from '../api'
+import { api, bytes, type Settings as Values } from '../api'
 import { Mark } from '../art'
 import { useI18n, type Lang } from '../i18n'
 import { Avatar, useSession } from '../session'
-import { PageHead, Segmented } from '../ui'
+import { ConfirmButton, PageHead, Segmented, Spinner } from '../ui'
 
 const REPO = 'https://github.com/Fialsss/Reliquary'
 const VERSION = '0.3.0'
@@ -13,6 +13,7 @@ const VERSION = '0.3.0'
 const SECTIONS = [
   ['account', UserRound],
   ['paths', FolderTree],
+  ['storage', HardDrive],
   ['help', CircleHelp],
   ['about', Info]
 ] as const
@@ -140,6 +141,8 @@ export default function Settings({ status, refresh, setArt, startTour }: PagePro
               )
             })}
 
+          {section === 'storage' && <Storage />}
+
           {section === 'help' && (
             <>
               <div className="setting">
@@ -211,5 +214,97 @@ export default function Settings({ status, refresh, setArt, startTour }: PagePro
         </section>
       </div>
     </div>
+  )
+}
+
+type Library = {
+  root: string
+  total: number
+  cache: number
+  items: { season: string; name: string; manifest: string; date: string; bytes: number; files: number }[]
+}
+
+/** What the Vault keeps on disk, and the way to give the space back. */
+function Storage() {
+  const { t } = useI18n()
+  const { toast } = useSession()
+  const [lib, setLib] = useState<Library | null>(null)
+
+  useEffect(() => {
+    api.call<Library>('vault.library').then(setLib)
+  }, [])
+
+  const run = (method: string, params: Record<string, string>, done: string) =>
+    api
+      .call<Library>(method, params)
+      .then((next) => {
+        setLib(next)
+        toast(done, 'ok')
+      })
+      .catch((e: Error) => toast(t(e.message), 'bad'))
+
+  if (!lib) {
+    return (
+      <div className="center">
+        <Spinner />
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="setting">
+        <div className="setting-label">
+          <b>{t('storage.library')}</b>
+          <small>{t('storage.libraryHint')}</small>
+        </div>
+        <div className="setting-control">
+          <span className="storage-total">{bytes(lib.total)}</span>
+          <button className="btn ghost small" onClick={() => api.open(lib.root)}>
+            <FolderOpen size={14} /> {t('vault.openFolder')}
+          </button>
+          {lib.items.length > 0 && (
+            <ConfirmButton
+              label={t('storage.deleteAll')}
+              confirm={t('storage.confirm')}
+              onConfirm={() => run('vault.delete', {}, t('storage.deleted', { size: bytes(lib.total) }))}
+            />
+          )}
+        </div>
+      </div>
+      {lib.items.length === 0 ? (
+        <p className="storage-empty">{t('storage.empty')}</p>
+      ) : (
+        <ul className="storage-list">
+          {lib.items.map((item) => (
+            <li key={item.manifest}>
+              <span className="mono dim">{item.season}</span>
+              <div className="grow">
+                <b>{item.name}</b>
+                <small className="mono">
+                  {item.date} · {t('storage.files', { n: item.files })}
+                </small>
+              </div>
+              <span className="storage-size">{bytes(item.bytes)}</span>
+              <ConfirmButton
+                label={t('storage.delete')}
+                confirm={t('storage.confirm')}
+                onConfirm={() => run('vault.delete', { season: item.season, manifest: item.manifest }, t('storage.deleted', { size: bytes(item.bytes) }))}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="setting">
+        <div className="setting-label">
+          <b>{t('storage.cache')}</b>
+          <small>{t('storage.cacheHint')}</small>
+        </div>
+        <div className="setting-control">
+          <span className="storage-total">{bytes(lib.cache)}</span>
+          <ConfirmButton label={t('storage.clear')} confirm={t('storage.confirm')} onConfirm={() => run('vault.clear_cache', {}, t('storage.cleared'))} />
+        </div>
+      </div>
+    </>
   )
 }

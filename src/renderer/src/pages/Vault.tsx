@@ -5,7 +5,7 @@ import { api, bytes, useCovers, useEngineEvent, type DepotFile, type Patch, type
 import { hueOf, SeasonArt } from '../art'
 import { useI18n } from '../i18n'
 import { Avatar, useSession } from '../session'
-import { Check, Chip, PageHead, Segmented, Spinner } from '../ui'
+import { Check, Chip, ConfirmButton, PageHead, Segmented, Spinner } from '../ui'
 
 const seedOf = (s: Season) => s.year * 10 + s.season
 
@@ -66,7 +66,7 @@ export default function Vault({ setArt, focus, openSeason }: PageProps) {
       <div className="years">
         <Segmented value={year} onChange={setYear} options={[['all', t('vault.all')], ...years.map((y): [string, string] => [String(y), `Y${y}`])]} />
       </div>
-      {error && <Notice text={error} />}
+      {error && <Notice text={t(error)} />}
       {!seasons && !error && (
         <div className="center">
           <Spinner size={22} />
@@ -190,6 +190,7 @@ function SeasonDetail({ season, back, setArt, cover }: { season: Season; back: (
 
   const size = (files ?? []).filter((f) => picked.has(f.name)).reduce((sum, f) => sum + f.size, 0)
   const hasLocal = (files ?? []).some((f) => f.local)
+  const localSize = (files ?? []).filter((f) => f.local).reduce((sum, f) => sum + f.size, 0)
 
   return (
     <div className="detail">
@@ -265,7 +266,7 @@ function SeasonDetail({ season, back, setArt, cover }: { season: Season; back: (
           </div>
         </div>
 
-        {error && <Notice text={error} onClose={() => setError('')} />}
+        {error && <Notice text={t(error)} onClose={() => setError('')} />}
 
         <div className="card files">
           <div className="files-head">
@@ -324,6 +325,19 @@ function SeasonDetail({ season, back, setArt, cover }: { season: Season; back: (
             <div className="files-foot">
               <span>{picked.size ? t('vault.selected', { n: picked.size, size: bytes(size) }) : t('vault.nothingSelected')}</span>
               <div className="row">
+                {hasLocal && !here && (
+                  <ConfirmButton
+                    small={false}
+                    label={t('vault.deleteLocal', { size: bytes(localSize) })}
+                    confirm={t('storage.confirm')}
+                    onConfirm={() =>
+                      api
+                        .call('vault.delete', { season: season.id, manifest: patch.manifest })
+                        .then(() => load())
+                        .catch((e: Error) => setError(e.message))
+                    }
+                  />
+                )}
                 {hasLocal && (
                   <button className="btn ghost" onClick={openFolder}>
                     <FolderOpen size={15} /> {t('vault.openFolder')}

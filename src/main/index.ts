@@ -4,6 +4,7 @@ import { Engine } from './engine'
 
 let window: BrowserWindow | undefined
 let closing = false
+let minimizing = false
 
 // The engine outlives the window by a moment when closing: never send to a destroyed one.
 const send = (channel: string, value: unknown) => {
@@ -68,6 +69,12 @@ function createWindow(): void {
     send('window:state', 'restore')
     fade(1, 240)
   })
+  // Safety net: a window that is shown and not on its way out must never stay transparent.
+  const reveal = () => {
+    if (!closing && !minimizing && !win.isMinimized() && win.getOpacity() < 1) fade(1, 160)
+  }
+  win.on('focus', reveal)
+  win.on('show', reveal)
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) shell.openExternal(url)
@@ -104,9 +111,11 @@ ipcMain.on('window', async (_event, action: 'minimize' | 'maximize' | 'close') =
   else if (action === 'maximize') window.isMaximized() ? window.unmaximize() : window.maximize()
   else {
     // fade out, then minimise invisibly; 'restore' fades back in
+    minimizing = true
     send('window:state', 'minimizing')
     await fade(0, 160)
     window?.minimize()
+    minimizing = false
   }
 })
 

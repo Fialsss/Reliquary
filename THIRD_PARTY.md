@@ -30,7 +30,7 @@ Inter and JetBrains Mono (SIL Open Font License 1.1, via Fontsource), React (MIT
 
 ## Season artwork
 
-Season covers and galleries are looked up at runtime on the [Rainbow Six Fandom wiki](https://rainbowsix.fandom.com) and loaded by the window like any web page would. The images belong to Ubisoft; none of them is stored in this repository or in the release builds. Offline, the app shows generated covers instead.
+Season covers and galleries are looked up at runtime on the [Rainbow Six Fandom wiki](https://rainbowsix.fandom.com) and loaded by the window like any web page would. The images belong to Ubisoft. The release builds don't include them; the screenshots in the README show them for illustration. Offline, the app shows generated covers instead.
 
 ## Not included
 

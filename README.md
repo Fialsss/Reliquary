@@ -28,7 +28,7 @@ The builds are not code-signed yet, so Windows SmartScreen may show *"Windows pr
 
 The app opens with a guided tour the first time, and the **?** button in the top bar brings it back whenever you need it. In short:
 
-1. **Sign in with Steam.** Press *Sign in with Steam* at the top right and scan the QR code with the Steam app on your phone (shield icon → *Scan a QR code*). The account must own Rainbow Six Siege on Steam. Your Steam name and picture then appear in the top bar.
+1. **Sign in with Steam.** Press *Sign in* at the top right, then either scan the QR code with the Steam app on your phone (shield icon → *Scan a QR code*) or switch to *Password* and type your account name and password; Steam Guard codes and phone approvals are asked right in the window. The account must own Rainbow Six Siege on Steam. Your Steam name and picture then appear in the top bar.
 2. **Open the Vault** and pick a season. Every card is the original build released at that time.
 3. **Load the file list.** Reliquary asks Steam which archives that build contains, with their sizes.
 4. **Tick what you need.** *Data* archives are small (tables, materials, references), *Textures* are 2 to 9 GB each, *Meshes* are the 3D models. For a first test, pick a small file.
@@ -61,6 +61,9 @@ This is how the original **Glacier for the 552 Commando (Y5S4)** was recovered. 
 | Operator roster | Reader needs an update for the latest game build (registry layout changed) |
 | Weapons, attachments, skins, charms, Blender scene with skin switcher | Method proven by hand on the 552 Commando; app integration next |
 | Installer and portable build, no dependencies | Working |
+| Steam sign-in: QR code, or account name and password with Steam Guard | Working |
+| Reading current game files without Oodle (bundled open-source ooz) | Working |
+| Disk space: see and delete downloaded archives and caches | Working |
 
 ## Requirements
 
@@ -109,7 +112,7 @@ The window never talks to the network or the disk directly. Every action is a re
 
 - It ships **no game files**. Everything is read from your install, or downloaded from Steam with your own account.
 - It does not bundle Oodle, which is proprietary. It ships **ooz** instead, an open-source decoder for the same compression, checked to give identical output on the current game files.
-- Season artwork is fetched at runtime from the Rainbow Six Fandom wiki and never stored in the repository.
+- It doesn't ship season artwork: the app loads it at runtime from the Rainbow Six Fandom wiki. The screenshots in this README show that artwork, © Ubisoft.
 - Extracted assets belong to Ubisoft. Use them for personal renders and fan art, and don't redistribute them.
 
 ## Credits

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import queue
 import re
 import shutil
 import subprocess
@@ -37,6 +39,7 @@ QR_DARK = set("█▀▄")
 _job_lock = threading.Lock()
 _active: subprocess.Popen | None = None
 _cancelled = False
+_codes: queue.Queue[str] = queue.Queue()  # Steam Guard codes typed in the window, handed to DepotDownloader
 
 
 # ------------------------------------------------------------------ seasons
@@ -135,48 +138,128 @@ def qr_matrix(lines: list[str]) -> list[str]:
     return ["".join("1" if r.ljust(width)[i] == "█" else "0" for i in range(0, width, 2)) for r in rows]
 
 
-def _run(args: list[str]) -> list[str]:
-    """Run DepotDownloader, streaming QR, progress and log lines as events."""
+def prompt_kind(text: str) -> str | None:
+    """Which question DepotDownloader is asking, if the unfinished line is one (they end without a newline)."""
+    lower = text.lower()
+    if "enter account password" in lower:
+        return "password"
+    if "auth code from your authenticator app" in lower:
+        return "code_app"
+    if "code sent to the email" in lower or "code sent to your email" in lower:
+        return "code_email"
+    return None
+
+
+def provide_code(code: str) -> None:
+    _codes.put(code.strip())
+
+
+def _await_code(process: subprocess.Popen) -> str | None:
+    while process.poll() is None and not _cancelled:
+        try:
+            return _codes.get(timeout=0.5)
+        except queue.Empty:
+            continue
+    return None
+
+
+def _run(args: list[str], login: dict | None = None) -> list[str]:
+    """Run DepotDownloader, streaming QR, progress and log lines as events and answering its questions.
+
+    `login` = {"username", "password"} signs in with credentials; the password only ever goes to the
+    tool's standard input, never to its command line (other programs can read those) or to disk.
+    """
     global _active, _cancelled
-    user = settings.load()["steam_user"]
+    user = login["username"] if login else settings.load()["steam_user"]
     auth = ["-username", user, "-remember-password"] if user else ["-qr", "-remember-password"]
     tool = _ensure_tool()
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     _cancelled = False
+    while not _codes.empty():
+        _codes.get_nowait()
     saved_logins = env.saved_logins()
     process = subprocess.Popen(
         [str(tool), "-app", str(APP), "-depot", str(DEPOT), *auth, *args],
-        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         cwd=tool.parent, creationflags=flags,
     )
     _active = process
     log: list[str] = []
     qr: list[str] | None = None
-    emit("steam.status", {"key": "connecting"})
-    for raw in process.stdout:
-        line = _decode(raw).rstrip("\r\n")
+    asked_password = False
+    wrong_code = False
+    stale_login = False
+
+    def answer(text: str) -> None:
+        process.stdin.write((text + "\n").encode())
+        process.stdin.flush()
+
+    def on_line(line: str) -> None:
+        nonlocal qr, wrong_code
         log.append(line)
         if qr is not None:
             if set(line) & QR_DARK:
                 qr.append(line)
-                continue
+                return
             if qr:  # the first quiet line after the code closes it
                 emit("steam.qr", {"matrix": qr_matrix(qr)})
                 qr = None
-            continue
+            return
         if "QR code" in line:
             qr = []
             emit("steam.status", {"key": "scan"})
-            continue
+            return
         if match := PROGRESS.match(line):
             emit("vault.progress", {"percent": float(match[1]), "file": Path(match[2]).name})
-            continue
+            return
+        if "confirm your sign in" in line:
+            emit("steam.status", {"key": "confirm"})
+        if "code you have provided is incorrect" in line:
+            wrong_code = True
         if match := REMEMBER.search(line):
             settings.update(steam_user=match[1])
             emit("steam.signed_in", {"user": match[1]})
         if line.strip():
             emit("vault.log", line.strip())
+
+    def on_prompt(kind: str, text: str) -> None:
+        nonlocal asked_password, wrong_code, stale_login
+        log.append(text)
+        if kind == "password":
+            if not login or asked_password:
+                # a remembered login went stale, or the password was refused: stop here
+                stale_login = not login
+                process.kill()
+                return
+            asked_password = True
+            answer(login["password"])
+            return
+        emit("steam.code", {"kind": "app" if kind == "code_app" else "email", "retry": wrong_code})
+        wrong_code = False
+        code = _await_code(process)
+        if code is None:
+            process.kill()
+        else:
+            answer(code)
+
+    emit("steam.status", {"key": "connecting"})
+    pending = b""
+    while chunk := os.read(process.stdout.fileno(), 4096):
+        pending += chunk
+        *lines, pending = pending.split(b"\n")
+        for raw in lines:
+            on_line(_decode(raw).rstrip("\r"))
+        if kind := prompt_kind(_decode(pending)):
+            on_prompt(kind, _decode(pending))
+            pending = b""
+    if pending:
+        on_line(_decode(pending).rstrip("\r"))
     code = process.wait()
+    process.stdout.close()
+    try:
+        process.stdin.close()
+    except OSError:
+        pass  # the tool already went away
     _active = None
     # whichever login file this run wrote is ours: remember it for the profile and for signing out
     changed = [p for p, t in env.saved_logins().items() if saved_logins.get(p) != t]
@@ -184,17 +267,25 @@ def _run(args: list[str]) -> list[str]:
         env.STORE_NOTE.write_text(changed[0].parent.parent.name, encoding="utf-8")
     if _cancelled:
         raise Failure("Cancelled")
-    if code != 0:
-        text = "\n".join(log)
+    text = "\n".join(log)
+    if code != 0 or stale_login:
         if "is not available from this account" in text:
-            raise Failure("This Steam account doesn't own Rainbow Six Siege")
-        if user and AUTH_TROUBLE.search(text):
+            raise Failure("error.notOwned")
+        if login:
+            if "RateLimit" in text:
+                raise Failure("error.rateLimit")
+            if asked_password and ("InvalidPassword" in text or process.returncode != 0 and "Failed to authenticate" in text):
+                raise Failure("error.wrongPassword")
+        if user and not login and (stale_login or AUTH_TROUBLE.search(text)):
             # the remembered login went stale: forget it and sign in again by QR
             settings.update(steam_user="")
             emit("steam.status", {"key": "relogin"})
             return _run(args)
         last = next((l.strip() for l in reversed(log) if l.strip()), f"exit code {code}")
         raise Failure(f"DepotDownloader failed: {last}")
+    if login:
+        settings.update(steam_user=login["username"])
+        emit("steam.signed_in", {"user": login["username"]})
     return log
 
 
@@ -222,13 +313,13 @@ def parse_manifest(text: str) -> list[dict]:
 
 
 @method("vault.files")
-def files(season: str, manifest: str, refresh: bool = False) -> list[dict]:
+def files(season: str, manifest: str, refresh: bool = False, login: dict | None = None) -> list[dict]:
     folder = settings.HOME / "manifests"
     cache = folder / f"manifest_{DEPOT}_{manifest}.txt"
     if refresh or not cache.is_file():
         with _job():
             scratch = folder / f"tmp-{manifest}"
-            _run(["-manifest", manifest, "-manifest-only", "-dir", str(scratch)])
+            _run(["-manifest", manifest, "-manifest-only", "-dir", str(scratch)], login)
             produced = next(scratch.rglob(f"manifest_{DEPOT}_*.txt"), None)
             if produced is None:
                 raise Failure("DepotDownloader finished without writing the manifest")
@@ -276,3 +367,70 @@ def cancel() -> bool:
 @method("vault.folder")
 def folder(season: str, manifest: str) -> str:
     return str(_library(season, manifest))
+
+
+# ------------------------------------------------------------ disk space
+
+def _size(path: Path) -> int:
+    if path.is_file():
+        return path.stat().st_size
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) if path.is_dir() else 0
+
+
+def _cache_paths() -> list[Path]:
+    """Things Reliquary fetches again by itself: manifests, artwork addresses, the DepotDownloader tool."""
+    return [settings.HOME / "manifests", settings.HOME / "art.json", env.depot_tool().parent]
+
+
+@method("vault.library")
+def library() -> dict:
+    """What the Vault keeps on disk, per season and build, so it can be cleaned up."""
+    items = []
+    for season in _seasons():
+        for patch in season["patches"]:
+            size = _size(_library(season["id"], patch["manifest"]))
+            if size:
+                items.append({"season": season["id"], "name": season["name"], "manifest": patch["manifest"],
+                              "date": patch["date"], "bytes": size,
+                              "files": len(_completed(_library(season["id"], patch["manifest"])))})
+    return {"root": settings.load()["library"], "total": sum(i["bytes"] for i in items), "items": items,
+            "cache": sum(_size(p) for p in _cache_paths())}
+
+
+def _remove_inside_library(target: Path) -> None:
+    root = Path(settings.load()["library"]).resolve()
+    target = target.resolve()
+    if target == root or root not in target.parents:
+        raise Failure("Refusing to delete outside the library folder")  # never follow odd input elsewhere
+    shutil.rmtree(target, ignore_errors=True)
+
+
+@method("vault.delete")
+def delete(season: str = "", manifest: str = "") -> dict:
+    """Delete downloaded archives: one build, one season, or (no arguments) the whole library."""
+    if _job_lock.locked():
+        raise Failure("error.busy")
+    known = {s["id"]: s for s in _seasons()}
+    if season and season not in known:
+        raise Failure(f"Unknown season {season!r}")
+    for sid in [season] if season else list(known):
+        manifests = [manifest] if manifest else [p["manifest"] for p in known[sid]["patches"]]
+        for m in manifests:
+            if _library(sid, m).exists():
+                _remove_inside_library(_library(sid, m))
+        season_dir = Path(settings.load()["library"]) / sid
+        if season_dir.is_dir() and not any(season_dir.iterdir()):
+            season_dir.rmdir()
+    return library()
+
+
+@method("vault.clear_cache")
+def clear_cache() -> dict:
+    if _job_lock.locked():
+        raise Failure("error.busy")
+    for path in _cache_paths():
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
+    return library()

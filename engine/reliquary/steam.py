@@ -118,10 +118,19 @@ def profile(refresh: bool = False) -> dict | None:
 
 
 @method("steam.login")
-def login() -> dict | None:
-    """Sign in by asking Steam for the latest season's file list: it proves ownership too."""
+def login(username: str = "", password: str = "") -> dict | None:
+    """Sign in by asking Steam for the latest season's file list: it proves ownership too.
+
+    Without credentials it's the QR flow; with them, DepotDownloader signs in with the account name
+    and password (handed over its standard input) and asks for Steam Guard when needed.
+    """
+    credentials = None
+    if username.strip():
+        if not password:
+            raise Failure("error.missingPassword")
+        credentials = {"username": username.strip(), "password": password}
     latest = vault.seasons()[-1]
-    vault.files(latest["id"], latest["patches"][-1]["manifest"], refresh=True)
+    vault.files(latest["id"], latest["patches"][-1]["manifest"], refresh=True, login=credentials)
     if not settings.load()["steam_user"]:
         # DepotDownloader didn't print the account name: take it from the login it just saved
         names = accounts_in_config(_configs()[0].read_bytes()) if _configs() else []
@@ -129,6 +138,13 @@ def login() -> dict | None:
             raise Failure("Signed in, but the Steam account name couldn't be determined")
         settings.update(steam_user=names[0])
     return profile(refresh=True)
+
+
+@method("steam.code")
+def code(code: str) -> bool:
+    """A Steam Guard code typed in the window, for the sign-in waiting on it."""
+    vault.provide_code(code)
+    return True
 
 
 @method("steam.signout")

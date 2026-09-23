@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 METHODS: dict[str, Callable[..., Any]] = {}
 _out = threading.Lock()
+_protocol = sys.stdout  # serve() keeps the real stdout here and points sys.stdout at the log
 
 
 class Failure(Exception):
@@ -31,8 +32,8 @@ def method(name: str):
 def _send(message: dict) -> None:
     line = json.dumps(message, ensure_ascii=False)
     with _out:
-        sys.stdout.write(line + "\n")
-        sys.stdout.flush()
+        _protocol.write(line + "\n")
+        _protocol.flush()
 
 
 def emit(event: str, data: Any = None) -> None:
@@ -54,9 +55,13 @@ def _handle(request: dict) -> None:
 
 
 def serve() -> None:
+    global _protocol
     # frozen builds get no -X utf8: pin the pipes to UTF-8 so log lines and paths survive
     sys.stdin.reconfigure(encoding="utf-8")
     sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+    # stray print()s (the parser's warnings) go to the log, never into the protocol
+    _protocol, sys.stdout = sys.stdout, sys.stderr
     workers = []
     for line in sys.stdin:
         line = line.strip()

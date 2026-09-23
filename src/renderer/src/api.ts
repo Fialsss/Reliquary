@@ -14,8 +14,8 @@ export type Status = { game: Check; blender: Check & { version: string }; oodle:
 export type Patch = { patch: string; date: string; manifest: string }
 export type Season = { id: string; year: number; season: number; name: string; patches: Patch[]; local: number }
 export type DepotFile = { name: string; size: number; category: 'data' | 'textures' | 'meshes' | 'other'; local: boolean }
-export type Operator = { uid: string; name: string }
-export type Settings = { game_dir: string; blender: string; oodle: string; library: string; steam_user: string }
+export type Operator = { uid: string; name: string; models: number; exported: string }
+export type Settings = { game_dir: string; blender: string; oodle: string; library: string; exports: string; steam_user: string }
 
 /** Subscribe to one engine event for the lifetime of the component. */
 export function useEngineEvent<T>(name: string, listener: (data: T) => void): void {

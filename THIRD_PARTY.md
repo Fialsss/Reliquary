@@ -3,7 +3,7 @@
 ## R6-parser
 
 - Source: https://github.com/TrueShadow01/R6-parser
-- Vendored in `engine/r6parser/src`, unmodified, from commit `f9531de198b88d248171709a5f5740053e51bddd` (2026-09-20)
+- Vendored in `engine/r6parser/src`, unmodified, from commit `20b4cae8fc4d3c3e65d0c6f0fb52a605bae795ca` (2026-09-22)
 - License: GNU GPL-3.0. Reliquary as a whole is distributed under the same license (see `LICENSE`).
 
 ## ooz (Kraken / Leviathan decoder)

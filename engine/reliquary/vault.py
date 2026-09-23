@@ -411,8 +411,9 @@ def _size(path: Path) -> int:
 
 
 def _cache_paths() -> list[Path]:
-    """Things Reliquary fetches again by itself: manifests, artwork addresses, the DepotDownloader tool."""
-    return [settings.HOME / "manifests", settings.HOME / "art.json", env.depot_tool().parent]
+    """Things Reliquary can rebuild: manifests, artwork addresses, the DepotDownloader tool, the asset index."""
+    return [settings.HOME / "manifests", settings.HOME / "art.json", env.depot_tool().parent,
+            settings.HOME / "r6-assets.sqlite"]
 
 
 @method("vault.library")

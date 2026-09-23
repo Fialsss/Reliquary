@@ -19,12 +19,13 @@ const SECTIONS = [
 ] as const
 type Section = (typeof SECTIONS)[number][0]
 
-type PathKey = 'game_dir' | 'blender' | 'oodle' | 'library'
+type PathKey = 'game_dir' | 'blender' | 'oodle' | 'library' | 'exports'
 const PATHS: { key: PathKey; kind: 'file' | 'folder'; ext?: string[]; detected?: 'game' | 'blender' | 'oodle' }[] = [
   { key: 'game_dir', kind: 'folder', detected: 'game' },
   { key: 'blender', kind: 'file', ext: ['exe'], detected: 'blender' },
   { key: 'oodle', kind: 'file', ext: ['dll'], detected: 'oodle' },
-  { key: 'library', kind: 'folder' }
+  { key: 'library', kind: 'folder' },
+  { key: 'exports', kind: 'folder' }
 ]
 const FAQ = ['smartscreen', 'owns', 'space', 'where', 'safe', 'oodle', 'next'] as const
 const CREDITS = [

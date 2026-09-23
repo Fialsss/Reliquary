@@ -16,6 +16,7 @@ DEFAULTS = {
     "blender": "",
     "oodle": "",
     "library": str(HOME / "library"),
+    "exports": str(Path.home() / "Documents" / "Reliquary"),
     "steam_user": "",
 }
 

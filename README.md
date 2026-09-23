@@ -34,7 +34,7 @@ The app opens with a guided tour the first time, and the **?** button in the top
 4. **Tick what you need.** *Data* archives are small (tables, materials, references), *Textures* are 2 to 9 GB each, *Meshes* are the 3D models. For a first test, pick a small file.
 5. **Download.** It runs in the background, with its progress in the top bar. Files land in your Library folder, which you can open from the account menu.
 
-For now the downloaded archives stay on your disk. Opening them and bringing skins, weapons and charms into Blender is what the next versions add.
+Then **Open this build** on the same page: Reliquary reads a downloaded texture archive and saves its textures as PNG, filtered by size and kind (color, normal, specular, masks), with the disk space shown before anything is written. Checked on a full Y2S3 Blood Orchid build: retired weapon skins and uniforms come out intact. This works for builds in the older Forge format (Zstandard, v29 and nearby); meshes and the current format are next.
 
 ## What it does
 
@@ -64,6 +64,7 @@ This is how the original **Glacier for the 552 Commando (Y5S4)** was recovered. 
 | Steam sign-in: QR code, or account name and password with Steam Guard | Working |
 | Reading current game files without Oodle (bundled open-source ooz) | Working |
 | Disk space: see and delete downloaded archives and caches | Working |
+| Old builds: textures of downloaded archives to PNG (Forge v29, Zstandard) | Working (checked on Y2S3); meshes next |
 
 ## Requirements
 

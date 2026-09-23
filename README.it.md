@@ -34,7 +34,7 @@ Al primo avvio l'app apre una guida passo per passo, e il pulsante **?** nella b
 4. **Spunta quello che ti serve.** Gli archivi *Dati* sono piccoli (tabelle, materiali, riferimenti), le *Texture* pesano da 2 a 9 GB l'una, i *Modelli* sono le geometrie 3D. Per una prima prova scegli un file piccolo.
 5. **Scarica.** Il download va in sottofondo e l'avanzamento resta nella barra in alto. I file finiscono nella cartella Libreria, che apri dal menu account.
 
-Per ora gli archivi scaricati restano sul tuo disco. Aprirli e portare skin, armi e ciondoli in Blender è quello che aggiungono le prossime versioni.
+Poi **Apri questa build** nella stessa pagina: Reliquary legge un archivio di texture scaricato e salva le texture in PNG, filtrate per dimensione e tipo (colore, normal, speculare, maschere), mostrando prima lo spazio su disco che serviranno. Provato su una build completa della Y2S3 Blood Orchid: skin d'arma ritirate e uniformi escono intatte. Funziona con le build nel formato Forge vecchio (Zstandard, v29 e vicine); mesh e formato attuale sono il passo successivo.
 
 ## Cosa fa
 
@@ -64,6 +64,7 @@ Per ora gli archivi scaricati restano sul tuo disco. Aprirli e portare skin, arm
 | Accesso Steam: codice QR, oppure nome account e password con Steam Guard | Funziona |
 | Lettura dei file attuali del gioco senza Oodle (ooz open source incluso) | Funziona |
 | Spazio su disco: vedere ed eliminare archivi scaricati e cache | Funziona |
+| Build vecchie: texture degli archivi scaricati in PNG (Forge v29, Zstandard) | Funziona (provato sulla Y2S3); mesh come prossimo passo |
 
 ## Requisiti
 

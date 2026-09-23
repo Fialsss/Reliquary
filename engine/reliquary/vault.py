@@ -326,11 +326,11 @@ def _run(args: list[str], login: dict | None = None) -> list[str]:
 
 def _category(name: str) -> str:
     lower = name.lower()
-    if "bnk_textures" in lower:
+    if "_bnk_" not in lower:
+        return "data"
+    if "textures" in lower:  # also old builds' bundles: datapc64_merged_bnk_011409403_textures3.forge
         return "textures"
-    if "bnk_mesh" in lower:
-        return "meshes"
-    return "other" if "_bnk_" in lower else "data"
+    return "meshes" if "_mesh" in lower else "other"
 
 
 def parse_manifest(text: str) -> list[dict]:

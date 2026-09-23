@@ -1134,6 +1134,100 @@ p {
   color: var(--ink-3);
   font-size: 10.5px;
 }
+/* vault: textures of a downloaded old build */
+.legacy {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: slidein 0.4s var(--e-slide) both;
+}
+.legacy-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.legacy-head small {
+  display: block;
+  margin-top: 4px;
+  max-width: 560px;
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+.legacy-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: var(--r2);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line-2);
+}
+.legacy-empty .mono {
+  color: var(--ink-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.legacy-empty .index-progress {
+  max-width: 360px;
+  margin: 0;
+}
+.legacy-filters {
+  display: grid;
+  gap: 12px;
+}
+.legacy-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.legacy-row > b {
+  width: 64px;
+  flex: none;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+.legacy-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.kind-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition:
+    background var(--t2) var(--e-out),
+    color var(--t2) var(--e-out),
+    border-color var(--t2) var(--e-out);
+}
+.kind-chip .mono {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.kind-chip.on {
+  color: var(--s0);
+  background: #fff;
+  border-color: #fff;
+}
+.kind-chip.on .mono {
+  color: rgba(0, 0, 0, 0.55);
+}
+.kind-chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 /* the roster, plus the panel of the picked operator */
 .ops-layout {
   display: grid;

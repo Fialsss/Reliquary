@@ -1169,7 +1169,206 @@ p {
   font-size: 12px;
   overflow-wrap: anywhere;
 }
-.legacy-empty .index-progress {
+.legacy-empty /* operator pack: the picks on the left, the game's icons on the right */
+.pack-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pack-summary p {
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.pack-summary > .btn {
+  width: 100%;
+  justify-content: center;
+}
+.pack-counts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.pack-counts span {
+  padding: 10px 12px;
+  border-radius: var(--r2);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line-2);
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.pack-counts b {
+  display: block;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 700;
+}
+.pack-open .btn {
+  flex: 1;
+  justify-content: center;
+}
+.cosmetics {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cosmetics-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 12px;
+}
+.cosmetics-head .segmented button {
+  white-space: nowrap;
+}
+.cosmetic-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  /* a scroller of fixed height: auto rows would shrink the cards to nothing (aspect-ratio + overflow hidden) */
+  grid-auto-rows: max-content;
+  gap: 10px;
+  padding: 2px 4px 4px 2px;
+  align-content: start;
+}
+.cosmetic {
+  position: relative;
+  aspect-ratio: 252 / 212;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #16171b;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  animation: slidein 0.4s var(--e-out) both;
+  animation-delay: calc(var(--i) * 18ms);
+  transition:
+    transform var(--t2) var(--e-out),
+    border-color var(--t2) var(--e-out),
+    box-shadow var(--t2) var(--e-out);
+}
+.cosmetic:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.cosmetic.on {
+  border-color: #fff;
+  box-shadow:
+    0 0 0 1px #fff,
+    0 14px 30px -16px rgba(0, 0, 0, 0.9);
+}
+.cosmetic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  animation: fadein 0.3s ease both;
+}
+.cosmetic-wait {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.05) 50%, transparent 70%) 0 0 / 250% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+@keyframes shimmer {
+  to {
+    background-position: -250% 0;
+  }
+}
+.cosmetic-check {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--s0);
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+.cosmetic.captioned {
+  aspect-ratio: 1;
+}
+.cosmetic-caption {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 18px 8px 7px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+  color: var(--ink);
+  background: linear-gradient(0deg, rgba(10, 10, 12, 0.92), transparent);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.cosmetic-none {
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0 8px, transparent 8px 16px),
+    #1b1c21;
+}
+.cosmetic-grid.scroll-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.weapon-block header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.weapon-block header b {
+  font-size: 15px;
+  font-weight: 700;
+}
+.weapon-block header small {
+  color: var(--ink-3);
+}
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 10px;
+}
+.cache-hint {
+  margin-top: -4px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.center.column {
+  flex-direction: column;
+  gap: 10px;
+  color: var(--ink-3);
+}
+.search.small {
+  height: 32px;
+}
+.search.small input {
+  width: 150px;
+}
+.cosmetic-tag {
+  position: absolute;
+  left: 7px;
+  bottom: 7px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+}
+.index-progress {
   max-width: 360px;
   margin: 0;
 }
@@ -1228,29 +1427,6 @@ p {
   opacity: 0.5;
   cursor: default;
 }
-/* the roster, plus the panel of the picked operator */
-.ops-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-.ops-layout.open {
-  grid-template-columns: minmax(0, 1fr) 300px;
-}
-button.op {
-  width: 100%;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-.op.on {
-  border-color: rgba(255, 255, 255, 0.55);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.2),
-    0 22px 46px -22px rgba(0, 0, 0, 0.9);
-}
 .op-done {
   position: absolute;
   top: 8px;
@@ -1263,83 +1439,6 @@ button.op {
   color: var(--s0);
   background: var(--ok);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
-}
-.op-panel {
-  position: sticky;
-  top: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 14px 16px;
-  animation: slidein 0.4s var(--e-slide) both;
-}
-.op-panel-art {
-  position: relative;
-  height: 170px;
-  border-radius: var(--r2);
-  overflow: hidden;
-}
-.op-panel-art svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-.op-panel-art span {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  font-size: 46px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.92);
-  text-shadow: 0 6px 30px rgba(0, 0, 0, 0.6);
-}
-.op-close {
-  position: absolute;
-  top: 22px;
-  right: 22px;
-  z-index: 1;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  color: var(--ink);
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid var(--line);
-  cursor: pointer;
-  transition: background var(--t2) var(--e-out);
-}
-.op-close:hover {
-  background: rgba(0, 0, 0, 0.7);
-}
-.op-panel-name {
-  margin-top: 4px;
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-.op-panel-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--ink-3);
-  font-size: 12.5px;
-}
-.op-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 6px;
-}
-.op-actions > .btn {
-  width: 100%;
-  justify-content: center;
-}
-.op-actions .row .btn {
-  flex: 1;
-  justify-content: center;
 }
 .op-note {
   color: var(--ink-3);

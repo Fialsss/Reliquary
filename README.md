@@ -46,7 +46,7 @@ This is how the original **Glacier for the 552 Commando (Y5S4)** was recovered. 
 
 **Workspace detection.** Reliquary finds the game through Ubisoft Connect or your Steam libraries, finds Blender, and tells you what is missing.
 
-**Operators.** Reliquary reads the operator roster from your own install with the bundled [R6-parser](https://github.com/TrueShadow01/R6-parser) engine and exports any operator, default body and head with their textures, as glTF. **Open in Blender** starts Blender and imports it with R6-parser's add-on, which rebuilds the Siege materials. The first time, build the asset index (a few minutes, about 130 MB); do it again after game updates.
+**Operators → Blender pack.** Pick an operator, then what goes in the pack: uniforms and headgear from the game's own icons (Elite sets have the gold background), the operator's weapons with their skins, and charms. **Create Blender pack** exports everything and has Blender build one `.blend`: a collection per uniform, headgear and weapon skin, ready to switch on and off, weapons and charms next to the operator. Uniforms and headgear come from your install (the bundled [R6-parser](https://github.com/TrueShadow01/R6-parser) reads them; its add-on rebuilds the Siege materials); weapon skins and charms come from the game's download cache, so you get the ones the game has downloaded on your PC. The first time, build the asset index (a few minutes, about 130 MB); do it again after game updates.
 
 **Armory (in development).** This is the weapon → skin → Blender pipeline. Skins are resolved through the game's own references (cosmetic record → material selection → material bundle → texture UIDs), never guessed from how they look. Every skin will carry that chain as proof.
 
@@ -58,7 +58,7 @@ This is how the original **Glacier for the 552 Commando (Y5S4)** was recovered. 
 | --- | --- |
 | Vault: season list, Steam QR sign-in, file list, selective download, cancel, resume | Working |
 | Workspace detection (Ubisoft Connect, Steam libraries, Blender) | Working |
-| Operator roster, export to glTF, open in Blender with Siege materials | Working (78 operators on the current build; checked in Blender 5.2) |
+| Operator Blender pack: uniforms and headgear (with icons), weapons, weapon skins and charms in one `.blend` | Working (78 operators on the current build; checked in Blender 5.2). Skins and charms: the ones in the game's download cache |
 | Weapons, attachments, skins, charms, Blender scene with skin switcher | Method proven by hand on the 552 Commando; app integration next |
 | Installer and portable build, no dependencies | Working |
 | Steam sign-in: QR code, or account name and password with Steam Guard | Working |

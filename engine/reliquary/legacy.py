@@ -27,7 +27,6 @@ TEXTURE_DATA = bytes.fromhex("3d4b0cc3")
 TRAILER = 0x29
 KINDS = {0: "color", 1: "normal", 2: "specular"}  # 3, 8, 9…: masks (BC4 single channel, detail patterns)
 
-_zstd = zstandard.ZstdDecompressor()
 _scans: dict[str, list[dict]] = {}
 _cancel = threading.Event()
 
@@ -75,7 +74,8 @@ def _block_chunks(blob: bytes, pos: int) -> tuple[list[tuple[int, int, int]], in
 def _inflate(blob: bytes, chunk: tuple[int, int, int]) -> bytes:
     start, packed, unpacked = chunk
     data = blob[start:start + packed]
-    return data if packed == unpacked else _zstd.decompress(data, max_output_size=unpacked)
+    # a fresh decompressor per chunk: sharing one between the engine's request threads can hang
+    return data if packed == unpacked else zstandard.ZstdDecompressor().decompress(data, max_output_size=unpacked)
 
 
 def asset_data(blob: bytes) -> bytes:

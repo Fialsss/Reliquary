@@ -46,7 +46,7 @@ Poi **Apri questa build** nella stessa pagina: Reliquary legge un archivio di te
 
 **Rilevamento della postazione.** Reliquary trova il gioco tramite Ubisoft Connect o le librerie di Steam, trova Blender e ti dice cosa manca.
 
-**Operatori.** Reliquary legge il roster dalla tua installazione con il motore [R6-parser](https://github.com/TrueShadow01/R6-parser) incluso ed esporta qualsiasi operatore, corpo e testa di default con le loro texture, in glTF. **Apri in Blender** avvia Blender e lo importa con l'add-on di R6-parser, che ricostruisce i materiali di Siege. La prima volta crea l'indice degli asset (pochi minuti, circa 130 MB); rifallo dopo gli aggiornamenti del gioco.
+**Operatori → pack Blender.** Scegli un operatore e cosa mettere nel pack: uniformi e copricapi dalle icone del gioco (i set Elite hanno lo sfondo dorato), le sue armi con le skin e i ciondoli. **Crea pack Blender** esporta tutto e fa costruire a Blender un unico `.blend`: una collezione per ogni uniforme, copricapo e skin d'arma, da accendere e spegnere, con armi e ciondoli accanto all'operatore. Uniformi e copricapi arrivano dalla tua installazione (li legge [R6-parser](https://github.com/TrueShadow01/R6-parser), il cui add-on ricostruisce i materiali di Siege); skin d'arma e ciondoli dalla cache dei download del gioco, quindi trovi quelli che il gioco ha scaricato sul tuo PC. La prima volta crea l'indice degli asset (pochi minuti, circa 130 MB); rifallo dopo gli aggiornamenti del gioco.
 
 **Armeria (in sviluppo).** È la catena arma → skin → Blender. Le skin vengono ritrovate seguendo i riferimenti interni del gioco (record cosmetico → selezione materiale → bundle materiale → UID delle texture), mai indovinate dall'aspetto. Ogni skin porterà con sé quella catena come prova.
 
@@ -58,7 +58,7 @@ Poi **Apri questa build** nella stessa pagina: Reliquary legge un archivio di te
 | --- | --- |
 | Archivio: elenco stagioni, accesso Steam con QR, elenco file, download selettivo, annulla, ripresa | Funziona |
 | Rilevamento postazione (Ubisoft Connect, librerie Steam, Blender) | Funziona |
-| Roster operatori, esportazione glTF, apertura in Blender con i materiali di Siege | Funziona (78 operatori sulla build attuale; provato in Blender 5.2) |
+| Pack Blender dell'operatore: uniformi e copricapi (con icone), armi, skin d'arma e ciondoli in un unico `.blend` | Funziona (78 operatori sulla build attuale; provato in Blender 5.2). Skin e ciondoli: quelli nella cache dei download del gioco |
 | Armi, accessori, skin, ciondoli, scena Blender con cambia-skin | Metodo dimostrato a mano sul 552 Commando, integrazione nell'app come prossimo passo |
 | Installer e versione portable, senza dipendenze | Funziona |
 | Accesso Steam: codice QR, oppure nome account e password con Steam Guard | Funziona |

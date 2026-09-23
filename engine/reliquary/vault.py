@@ -32,11 +32,13 @@ MARKER = ".reliquary.json"
 
 PROGRESS = re.compile(r"^\s*(\d{1,3}(?:\.\d+)?)%\s+(.+)$")
 REMEMBER = re.compile(r"-username (\S+) -remember-password")
+LICENSES = re.compile(r"Got \d+ licenses for account")  # logged on: the rest of the run is the actual job
 MANIFEST_ROW = re.compile(r"^\s*(\d+)\s+(\d+)\s+([0-9a-f]{40})\s+(\d+)\s+(.+?)\s*$")
 AUTH_TROUBLE = re.compile(r"(?i)password|logon|login|access ?denied|expired|two-factor|auth code")
 QR_DARK = set("█▀▄")
 
 _job_lock = threading.Lock()
+_tool_lock = threading.Lock()
 _active: subprocess.Popen | None = None
 _cancelled = False
 _codes: queue.Queue[str] = queue.Queue()  # Steam Guard codes typed in the window, handed to DepotDownloader
@@ -82,17 +84,31 @@ def seasons() -> list[dict]:
 
 # --------------------------------------------------------------- the tool
 
-def _ensure_tool() -> Path:
+def _ensure_tool(announce: bool = True) -> Path:
     tool = env.depot_tool()
-    if tool.is_file():
-        return tool
-    emit("steam.status", {"key": "tool"})
-    tool.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(TOOL_URL, timeout=120) as response:
-        zipfile.ZipFile(io.BytesIO(response.read())).extractall(tool.parent)
+    if announce and not tool.is_file():
+        emit("steam.status", {"key": "tool"})
+    with _tool_lock:  # a sign-in started during the startup prefetch waits for that same download
+        if tool.is_file():
+            return tool
+        part = tool.parent / "download.part"  # unpacked aside first: a cut download never looks installed
+        shutil.rmtree(part, ignore_errors=True)
+        with urllib.request.urlopen(TOOL_URL, timeout=120) as response:
+            zipfile.ZipFile(io.BytesIO(response.read())).extractall(part)
+        for item in part.iterdir():
+            os.replace(item, tool.parent / item.name)
+        part.rmdir()
     if not tool.is_file():
         raise Failure("DepotDownloader.exe is missing from the downloaded release")
     return tool
+
+
+def prefetch_tool() -> None:
+    """Fetch DepotDownloader (33 MB) in the background at startup, so signing in never waits for it."""
+    try:
+        _ensure_tool(announce=False)
+    except (OSError, Failure, zipfile.BadZipFile):
+        pass  # offline: the first Steam job tries again and reports it
 
 
 @contextmanager
@@ -189,13 +205,33 @@ def _run(args: list[str], login: dict | None = None) -> list[str]:
     asked_password = False
     wrong_code = False
     stale_login = False
+    remembered = ""
+    announced = False
+
+    def ours() -> list[Path]:
+        # whichever login file this run wrote is ours: remember it for the profile and for signing out
+        changed = [p for p, t in env.saved_logins().items() if saved_logins.get(p) != t]
+        if changed:
+            env.STORE_NOTE.write_text(changed[0].parent.parent.name, encoding="utf-8")
+        return changed
+
+    def signed_in() -> None:
+        # a new sign-in (QR or password), not a remembered one: tell the window now, while the job goes on
+        nonlocal announced
+        announced = True
+        changed = ours()
+        names = env.accounts_in_config(changed[0].read_bytes()) if changed else []
+        name = login["username"] if login else remembered or (names[0] if len(names) == 1 else "")
+        if name:
+            settings.update(steam_user=name)
+            emit("steam.signed_in", {"user": name})
 
     def answer(text: str) -> None:
         process.stdin.write((text + "\n").encode())
         process.stdin.flush()
 
     def on_line(line: str) -> None:
-        nonlocal qr, wrong_code
+        nonlocal qr, wrong_code, remembered
         log.append(line)
         if qr is not None:
             if set(line) & QR_DARK:
@@ -217,8 +253,9 @@ def _run(args: list[str], login: dict | None = None) -> list[str]:
         if "code you have provided is incorrect" in line:
             wrong_code = True
         if match := REMEMBER.search(line):
-            settings.update(steam_user=match[1])
-            emit("steam.signed_in", {"user": match[1]})
+            remembered = match[1]
+        if LICENSES.search(line) and not announced and (login or not user):
+            signed_in()
         if line.strip():
             emit("vault.log", line.strip())
 
@@ -261,10 +298,7 @@ def _run(args: list[str], login: dict | None = None) -> list[str]:
     except OSError:
         pass  # the tool already went away
     _active = None
-    # whichever login file this run wrote is ours: remember it for the profile and for signing out
-    changed = [p for p, t in env.saved_logins().items() if saved_logins.get(p) != t]
-    if changed:
-        env.STORE_NOTE.write_text(changed[0].parent.parent.name, encoding="utf-8")
+    ours()
     if _cancelled:
         raise Failure("Cancelled")
     text = "\n".join(log)
@@ -283,9 +317,8 @@ def _run(args: list[str], login: dict | None = None) -> list[str]:
             return _run(args)
         last = next((l.strip() for l in reversed(log) if l.strip()), f"exit code {code}")
         raise Failure(f"DepotDownloader failed: {last}")
-    if login:
-        settings.update(steam_user=login["username"])
-        emit("steam.signed_in", {"user": login["username"]})
+    if not announced and (login or not user):
+        signed_in()
     return log
 
 

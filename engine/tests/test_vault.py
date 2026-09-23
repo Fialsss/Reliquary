@@ -46,5 +46,36 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(files[2]["category"], "data")
 
 
+
+class ToolTest(unittest.TestCase):
+    def test_prefetch_and_sign_in_share_one_download(self):
+        import tempfile
+        import threading
+        import zipfile
+        from pathlib import Path
+
+        from reliquary import settings, vault
+
+        tmp = Path(tempfile.mkdtemp())
+        with zipfile.ZipFile(tmp / "dd.zip", "w") as z:
+            z.writestr("DepotDownloader.exe", b"MZ" * 1000)
+            z.writestr("LICENSE", "GPL-2.0")
+        saved = settings.HOME, vault.TOOL_URL, vault.urllib.request.urlopen, vault.emit
+        opened = []
+        settings.HOME, vault.TOOL_URL, vault.emit = tmp / "home", (tmp / "dd.zip").as_uri(), lambda *a: None
+        vault.urllib.request.urlopen = lambda *a, **k: opened.append(a) or saved[2](*a, **k)
+        try:
+            threads = [threading.Thread(target=vault.prefetch_tool), threading.Thread(target=vault._ensure_tool)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            tool = tmp / "home" / "tools" / "DepotDownloader"
+            self.assertEqual(len(opened), 1)
+            self.assertEqual(sorted(p.name for p in tool.iterdir()), ["DepotDownloader.exe", "LICENSE"])  # no .part left
+        finally:
+            settings.HOME, vault.TOOL_URL, vault.urllib.request.urlopen, vault.emit = saved
+
+
 if __name__ == "__main__":
     unittest.main()

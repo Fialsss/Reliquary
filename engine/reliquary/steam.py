@@ -12,10 +12,10 @@ import json
 import re
 import shutil
 import urllib.request
-import zlib
 from pathlib import Path
 
 from . import env, settings, vault
+from .env import accounts_in_config, inflate  # noqa: F401  (accounts_in_config: tested from here)
 from .rpc import Failure, method
 
 PROFILE_FILE = settings.HOME / "steam.json"
@@ -38,26 +38,9 @@ def _configs() -> list[Path]:
     return ours or sorted(env.saved_logins(), key=lambda c: c.stat().st_mtime, reverse=True)
 
 
-def _inflate(raw: bytes) -> bytes:
-    try:
-        return zlib.decompress(raw, -15)  # DepotDownloader writes a raw DeflateStream
-    except zlib.error:
-        return b""
-
-
-def accounts_in_config(raw: bytes) -> list[str]:
-    """Account names that have a saved login token (protobuf map keys followed by a JWT)."""
-    data = _inflate(raw)
-    names = []
-    for match in re.finditer(rb"\x0a([\x02-\x40])([\w.-]+)\x12..ey", data, re.S):
-        if match[1][0] == len(match[2]):
-            names.append(match[2].decode())
-    return list(dict.fromkeys(names))
-
-
 def steamid_from_config(raw: bytes, user: str) -> str | None:
     """SteamID64 from the `sub` claim of the token saved for `user` in account.config."""
-    data = _inflate(raw)
+    data = inflate(raw)
     at = data.find(user.encode())
     match = JWT.search(data, at) if at >= 0 else None
     if not match:
@@ -132,11 +115,7 @@ def login(username: str = "", password: str = "") -> dict | None:
     latest = vault.seasons()[-1]
     vault.files(latest["id"], latest["patches"][-1]["manifest"], refresh=True, login=credentials)
     if not settings.load()["steam_user"]:
-        # DepotDownloader didn't print the account name: take it from the login it just saved
-        names = accounts_in_config(_configs()[0].read_bytes()) if _configs() else []
-        if len(names) != 1:
-            raise Failure("Signed in, but the Steam account name couldn't be determined")
-        settings.update(steam_user=names[0])
+        raise Failure("Signed in, but the Steam account name couldn't be determined")
     return profile(refresh=True)
 
 

@@ -125,9 +125,6 @@ export default function Tour({ go, close }: { go: (page: Page) => void; close: (
         className={`tour-card${side}`}
         style={{ top, left, width: cardW, '--caret': `${caret}px` } as React.CSSProperties}
       >
-        <div className="tour-progress">
-          <i style={{ width: `${((index + 1) / STEPS.length) * 100}%` }} />
-        </div>
         <div className="tour-viewport" style={{ height: bodyH }}>
           <div ref={body} className={`tour-body${wide ? ' center' : ''}`} key={step.key} style={{ '--from': `${dir * 18}px` } as React.CSSProperties}>
             {step.key === 'welcome' && <Mark size={40} />}

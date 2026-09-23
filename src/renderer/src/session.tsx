@@ -85,18 +85,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setArrived(true)
     setTimeout(() => setArrived(false), 900)
   }
+  // The welcome plays as soon as Steam accepts the sign-in (steam.signed_in); the call itself ends
+  // later, once the file list that proves ownership is in. Whatever it says then comes as a toast.
+  const finished = (p: Profile | null) => {
+    const l = current.current
+    if (l.open && !l.done) welcome(p)
+  }
   const fail = (e: Error) => {
     if (e.message === 'Cancelled') return
-    setLogin((l) => (l.open ? { ...l, busy: false, qr: null, code: null, phase: '', error: e.message } : l))
+    const l = current.current
+    if (!l.open || l.done) toast(t(e.message), 'bad')
+    else setLogin((l) => ({ ...l, busy: false, qr: null, code: null, phase: '', error: e.message }))
   }
 
   const startQr = () => {
     setLogin((l) => ({ ...CLOSED, open: true, user: l.user, busy: true }))
-    api.call<Profile | null>('steam.login').then(welcome).catch(fail)
+    api.call<Profile | null>('steam.login').then(finished).catch(fail)
   }
   const startPassword = (username: string, password: string) => {
     setLogin((l) => ({ ...l, mode: 'password', busy: true, error: '', phase: 'connecting', code: null, user: username }))
-    api.call<Profile | null>('steam.login', { username, password }).then(welcome).catch(fail)
+    api.call<Profile | null>('steam.login', { username, password }).then(finished).catch(fail)
   }
   // switching method stops whatever the other one was waiting for
   const switchMode = async (mode: Mode) => {
@@ -129,8 +137,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEngineEvent('steam.signed_in', () => {
     api.call<Profile | null>('steam.profile', { refresh: true }).then((p) => {
       const l = current.current
-      // a sign-in started by a Vault job rather than by this dialog: celebrate here too
-      if (l.open && !l.busy && !l.done) welcome(p)
+      if (l.open && !l.done) welcome(p)
       else if (!l.open && p) toast(t('toast.welcome', { name: p.name }), 'ok')
       setProfile(p)
     })

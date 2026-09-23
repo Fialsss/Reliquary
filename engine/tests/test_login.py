@@ -23,6 +23,7 @@ while code != "AB12C":  # like DepotDownloader: say so, then ask again
     sys.stderr.write("The previous 2-factor auth code you have provided is incorrect.\n")
     code = ask("STEAM GUARD! Please enter your 2-factor auth code from your authenticator app: ")
 print()
+print("Got 3 licenses for account!")
 print("Got manifest")
 '''
 
@@ -66,6 +67,12 @@ class CredentialsLoginTest(unittest.TestCase):
         self.assertIn(("steam.code", {"kind": "app", "retry": False}), self.events)
         # the password is never echoed back as an event
         self.assertFalse(any("hunter2" in str(data) for _, data in self.events))
+
+    def test_welcome_comes_as_soon_as_steam_accepts(self):
+        self.run_login("hunter2", "AB12C")
+        signed = self.events.index(("steam.signed_in", {"user": "demo"}))
+        self.assertLess(signed, self.events.index(("vault.log", "Got manifest")))  # not after the whole job
+        self.assertEqual(sum(name == "steam.signed_in" for name, _ in self.events), 1)
 
     def test_wrong_password_is_reported(self):
         with self.assertRaises(vault.Failure) as caught:

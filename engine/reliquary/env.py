@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import zlib
 from pathlib import Path
 
 from . import settings
@@ -101,6 +102,23 @@ STORE_NOTE = settings.HOME / "steam-store.txt"
 
 def saved_logins() -> dict[Path, float]:
     return {p: p.stat().st_mtime for p in ISOLATED.glob("*/*/Url.*/AssemFiles/account.config")}
+
+
+def inflate(raw: bytes) -> bytes:
+    try:
+        return zlib.decompress(raw, -15)  # DepotDownloader writes a raw DeflateStream
+    except zlib.error:
+        return b""
+
+
+def accounts_in_config(raw: bytes) -> list[str]:
+    """Account names that have a saved login token (protobuf map keys followed by a JWT)."""
+    data = inflate(raw)
+    names = []
+    for match in re.finditer(rb"\x0a([\x02-\x40])([\w.-]+)\x12..ey", data, re.S):
+        if match[1][0] == len(match[2]):
+            names.append(match[2].decode())
+    return list(dict.fromkeys(names))
 
 
 @method("env.status")

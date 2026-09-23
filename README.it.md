@@ -11,7 +11,7 @@
 
 ![Reliquary in azione](docs/reliquary.gif)
 
-> **Anteprima.** L'Archivio funziona dall'inizio alla fine. Operatori e Armeria sono in costruzione: vedi [Stato](#stato).
+> **Anteprima.** Archivio e Operatori funzionano dall'inizio alla fine. L'Armeria è in costruzione: vedi [Stato](#stato).
 
 ## Download
 
@@ -46,7 +46,7 @@ Per ora gli archivi scaricati restano sul tuo disco. Aprirli e portare skin, arm
 
 **Rilevamento della postazione.** Reliquary trova il gioco tramite Ubisoft Connect o le librerie di Steam, trova Blender e ti dice cosa manca.
 
-**Operatori.** Reliquary legge il roster dalla tua installazione con il motore [R6-parser](https://github.com/TrueShadow01/R6-parser) incluso. La pagina mostra la catena che serve (gioco trovato → runtime Oodle → lettura del roster) e cosa fare quando manca un anello.
+**Operatori.** Reliquary legge il roster dalla tua installazione con il motore [R6-parser](https://github.com/TrueShadow01/R6-parser) incluso ed esporta qualsiasi operatore, corpo e testa di default con le loro texture, in glTF. **Apri in Blender** avvia Blender e lo importa con l'add-on di R6-parser, che ricostruisce i materiali di Siege. La prima volta crea l'indice degli asset (pochi minuti, circa 130 MB); rifallo dopo gli aggiornamenti del gioco.
 
 **Armeria (in sviluppo).** È la catena arma → skin → Blender. Le skin vengono ritrovate seguendo i riferimenti interni del gioco (record cosmetico → selezione materiale → bundle materiale → UID delle texture), mai indovinate dall'aspetto. Ogni skin porterà con sé quella catena come prova.
 
@@ -58,7 +58,7 @@ Per ora gli archivi scaricati restano sul tuo disco. Aprirli e portare skin, arm
 | --- | --- |
 | Archivio: elenco stagioni, accesso Steam con QR, elenco file, download selettivo, annulla, ripresa | Funziona |
 | Rilevamento postazione (Ubisoft Connect, librerie Steam, Blender) | Funziona |
-| Roster operatori | Il lettore va aggiornato all'ultima build del gioco (è cambiato il formato del registro) |
+| Roster operatori, esportazione glTF, apertura in Blender con i materiali di Siege | Funziona (78 operatori sulla build attuale; provato in Blender 5.2) |
 | Armi, accessori, skin, ciondoli, scena Blender con cambia-skin | Metodo dimostrato a mano sul 552 Commando, integrazione nell'app come prossimo passo |
 | Installer e versione portable, senza dipendenze | Funziona |
 | Accesso Steam: codice QR, oppure nome account e password con Steam Guard | Funziona |

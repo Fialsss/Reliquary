@@ -94,7 +94,7 @@ export default function App() {
           <Mark />
           <div>
             <b>RELIQUARY</b>
-            <span>{t('brand.tag')} 0.3</span>
+            <span>{t('brand.tag')} {__VERSION__.replace(/\.0$/, '')}</span>
           </div>
         </div>
         <nav className="nav">

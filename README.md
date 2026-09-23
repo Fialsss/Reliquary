@@ -11,7 +11,7 @@
 
 ![Reliquary in action](docs/reliquary.gif)
 
-> **Preview.** The Vault works end to end. Operators and the Armory are being built: see [Status](#status).
+> **Preview.** The Vault and Operators work end to end. The Armory is being built: see [Status](#status).
 
 ## Download
 
@@ -46,7 +46,7 @@ This is how the original **Glacier for the 552 Commando (Y5S4)** was recovered. 
 
 **Workspace detection.** Reliquary finds the game through Ubisoft Connect or your Steam libraries, finds Blender, and tells you what is missing.
 
-**Operators.** Reliquary reads the operator roster from your own install with the bundled [R6-parser](https://github.com/TrueShadow01/R6-parser) engine. The page shows the chain it needs (game found → Oodle runtime → roster read) and what to do when a link is missing.
+**Operators.** Reliquary reads the operator roster from your own install with the bundled [R6-parser](https://github.com/TrueShadow01/R6-parser) engine and exports any operator, default body and head with their textures, as glTF. **Open in Blender** starts Blender and imports it with R6-parser's add-on, which rebuilds the Siege materials. The first time, build the asset index (a few minutes, about 130 MB); do it again after game updates.
 
 **Armory (in development).** This is the weapon → skin → Blender pipeline. Skins are resolved through the game's own references (cosmetic record → material selection → material bundle → texture UIDs), never guessed from how they look. Every skin will carry that chain as proof.
 
@@ -58,7 +58,7 @@ This is how the original **Glacier for the 552 Commando (Y5S4)** was recovered. 
 | --- | --- |
 | Vault: season list, Steam QR sign-in, file list, selective download, cancel, resume | Working |
 | Workspace detection (Ubisoft Connect, Steam libraries, Blender) | Working |
-| Operator roster | Reader needs an update for the latest game build (registry layout changed) |
+| Operator roster, export to glTF, open in Blender with Siege materials | Working (78 operators on the current build; checked in Blender 5.2) |
 | Weapons, attachments, skins, charms, Blender scene with skin switcher | Method proven by hand on the 552 Commando; app integration next |
 | Installer and portable build, no dependencies | Working |
 | Steam sign-in: QR code, or account name and password with Steam Guard | Working |

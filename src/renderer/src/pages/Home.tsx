@@ -74,7 +74,7 @@ export default function Home({ go, setArt, status, openSeason }: PageProps) {
         </div>
         <div className="hero-body" key={slide.id}>
           <span className="welcome" style={{ '--i': 0 } as React.CSSProperties}>
-            <Mark size={14} /> {t('home.welcome')}
+            <Mark size={14} /> {t('home.welcome', { version: __VERSION__.replace(/\.0$/, '') })}
           </span>
           <div className="eyebrow" style={{ '--i': 1 } as React.CSSProperties}>
             {t(`slide.${slide.id}.eyebrow`)}

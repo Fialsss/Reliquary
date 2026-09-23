@@ -4,6 +4,7 @@
 
 - Source: https://github.com/TrueShadow01/R6-parser
 - Vendored in `engine/r6parser/src`, unmodified, from commit `20b4cae8fc4d3c3e65d0c6f0fb52a605bae795ca` (2026-09-22)
+- Also vendored, unmodified: its Blender add-on in `engine/r6parser/blender_addon/io_scene_r6`. Reliquary runs its import function (Siege materials) inside Blender when you open an exported operator.
 - License: GNU GPL-3.0. Reliquary as a whole is distributed under the same license (see `LICENSE`).
 
 ## ooz (Kraken / Leviathan decoder)

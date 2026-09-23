@@ -18,7 +18,7 @@ const en: Record<string, string> = {
 
   'home.prev': 'Previous',
   'home.next': 'Next',
-  'home.welcome': 'RELIQUARY 0.3 · PREVIEW',
+  'home.welcome': 'RELIQUARY {version} · PREVIEW',
   'slide.vault.eyebrow': 'Retired content · Steam depots',
   'slide.vault.title': 'Every season,',
   'slide.vault.title2': 'still in the vault',
@@ -330,7 +330,7 @@ const it: Record<string, string> = {
 
   'home.prev': 'Precedente',
   'home.next': 'Successiva',
-  'home.welcome': 'RELIQUARY 0.3 · ANTEPRIMA',
+  'home.welcome': 'RELIQUARY {version} · ANTEPRIMA',
   'slide.vault.eyebrow': 'Contenuti ritirati · depot Steam',
   'slide.vault.title': 'Ogni stagione,',
   'slide.vault.title2': "ancora nell'archivio",

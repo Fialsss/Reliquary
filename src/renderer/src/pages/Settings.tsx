@@ -8,7 +8,7 @@ import { Avatar, useSession } from '../session'
 import { ConfirmButton, PageHead, Segmented, Spinner } from '../ui'
 
 const REPO = 'https://github.com/Fialsss/Reliquary'
-const VERSION = '0.3.0'
+const VERSION = __VERSION__
 
 const SECTIONS = [
   ['account', UserRound],

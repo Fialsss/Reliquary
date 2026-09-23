@@ -30,6 +30,7 @@ const FAQ = ['smartscreen', 'owns', 'space', 'where', 'safe', 'oodle', 'next'] a
 const CREDITS = [
   ['R6-parser', 'TrueShadow01', 'https://github.com/TrueShadow01/R6-parser'],
   ['DepotDownloader', 'SteamRE', 'https://github.com/SteamRE/DepotDownloader'],
+  ['ooz', 'powzix', 'https://github.com/powzix/ooz'],
   ['RainbowForge', 'parzivail', 'https://github.com/parzivail/RainbowForge']
 ] as const
 
@@ -184,7 +185,7 @@ export default function Settings({ status, refresh, setArt, startTour }: PagePro
                   <ExternalLink size={14} /> GitHub
                 </a>
               </div>
-              <div className="setting">
+              <div className="setting credit">
                 <div className="setting-label">
                   <b>{t('about.author')}</b>
                   <small>{t('about.authorHint')}</small>
@@ -196,7 +197,7 @@ export default function Settings({ status, refresh, setArt, startTour }: PagePro
                 </div>
               </div>
               {CREDITS.map(([name, author, url]) => (
-                <div key={name} className="setting">
+                <div key={name} className="setting credit">
                   <div className="setting-label">
                     <b>{name}</b>
                     <small>{t(`credit.${name}`, { author })}</small>

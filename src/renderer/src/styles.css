@@ -1954,6 +1954,28 @@ p {
 .faq details[open] summary svg {
   transform: rotate(90deg);
 }
+/* the answer slides open and closed (native <details>, animated to its auto height) */
+.faq details {
+  interpolate-size: allow-keywords;
+  transition: background var(--t2) var(--e-out), border-color var(--t2) var(--e-out);
+}
+.faq details[open] {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--line);
+}
+.faq details::details-content {
+  block-size: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    block-size 0.34s var(--e-out),
+    opacity 0.26s ease,
+    content-visibility 0.34s allow-discrete;
+}
+.faq details[open]::details-content {
+  block-size: auto;
+  opacity: 1;
+}
 .faq details p {
   padding: 0 14px 12px;
   color: var(--ink-2);
@@ -2410,6 +2432,10 @@ p {
   gap: 24px;
   padding: 18px 0;
   border-bottom: 1px solid var(--line-2);
+}
+/* credits: the control is just a short link, so the text gets the rest of the row */
+.setting.credit {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 .setting:last-child {
   border-bottom: 0;

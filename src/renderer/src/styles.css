@@ -2310,12 +2310,14 @@ button.op {
   justify-content: space-between;
   gap: 10px;
 }
+.from-vault-head > * {
+  white-space: nowrap;
+}
 .from-vault-head .mono {
   font-size: 10.5px;
 }
 .mini-covers {
-  flex: 1;
-  min-height: 0;
+  flex: 1; /* never below its covers: squeezed, they spilled into the gap above the button */
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-auto-rows: 1fr;

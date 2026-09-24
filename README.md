@@ -1,17 +1,50 @@
-<p align="center">
-  <img src="resources/icon.png" width="96" alt="" />
-</p>
+<div align="center">
+  <img src="resources/icon.png" width="112" alt="Reliquary" />
+  <h1>Reliquary</h1>
+  <p>
+    <b>Rainbow Six Siege, straight into Blender.</b><br />
+    Every operator, weapon skin and charm in the game, with its own pictures, packed into one ready-to-use .blend. Retired seasons from Steam, one archive at a time.
+  </p>
+  <p>
+    <img src="https://img.shields.io/badge/Windows-0b0b0d?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
+    <img src="https://img.shields.io/badge/early%20preview-ffb347?style=for-the-badge" alt="Early preview" />
+    <img src="https://img.shields.io/badge/GPL--3.0%20%2B%20attribution-3ddc97?style=for-the-badge" alt="GPL-3.0 with attribution" />
+  </p>
+  <p><a href="README.it.md">Leggi in italiano</a></p>
+  <img src="docs/reliquary.gif" width="820" alt="Reliquary: operators, weapon skins and charms" />
+</div>
 
-<h1 align="center">Reliquary</h1>
+> [!WARNING]
+> Reliquary is still in development: expect rough edges. The Vault and Operators work end to end; the Armory page is being built. It is a fan project, not affiliated with, endorsed by or sponsored by Ubisoft or Valve.
 
-<p align="center">
-  A desktop studio for Rainbow Six Siege assets: retired seasons, operators, weapons, skins and charms, straight into Blender.<br />
-  <a href="README.it.md">Leggi in italiano</a>
-</p>
+## A look around
 
-![Reliquary in action](docs/reliquary.gif)
-
-> **Preview.** The Vault and Operators work end to end. The Armory is being built: see [Status](#status).
+<table>
+  <tr>
+    <td width="50%"><img src="docs/operators.png" alt="Operators" /></td>
+    <td width="50%"><img src="docs/skins.png" alt="Weapon skins" /></td>
+  </tr>
+  <tr>
+    <td><b>Operators.</b> The game's own portraits and emblems, attackers and defenders apart.</td>
+    <td><b>Every weapon skin.</b> The whole catalog for each weapon, with the game's previews: universal skins and the weapon's own.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/charms.png" alt="Charms" /></td>
+    <td><img src="docs/ranked.png" alt="Ranked charms" /></td>
+  </tr>
+  <tr>
+    <td><b>All 2,489 charms,</b> season by season, with their icons, rarity and a search.</td>
+    <td><b>Filters.</b> By season, kind (ranked, battle pass, esports, chibi, events) and rank, from Copper to Champion.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/vault.png" alt="The Vault" /></td>
+    <td><img src="docs/home.png" alt="Home" /></td>
+  </tr>
+  <tr>
+    <td><b>The Vault.</b> All 43 seasons still on Steam, downloaded one archive at a time.</td>
+    <td><b>Home.</b> Your workspace at a glance: Steam, the game, Blender, Oodle.</td>
+  </tr>
+</table>
 
 ## Download
 
@@ -42,15 +75,11 @@ Then **Open this build** on the same page: Reliquary reads a downloaded texture 
 
 This is how the original **Glacier for the 552 Commando (Y5S4)** was recovered. It no longer exists in the live game. Its textures sat in a single 9 GB archive of the Neon Dawn build.
 
-![The Vault](docs/vault.png)
-
 **Workspace detection.** Reliquary finds the game through Ubisoft Connect or your Steam libraries, finds Blender, and tells you what is missing.
 
-**Operators → Blender pack.** The roster comes with the game's own portraits and emblems, split into attackers and defenders. Pick an operator, then what goes in the pack: uniforms and headgear from the game's own icons (Elite sets have the gold background), the operator's weapons (with their magazine) and their skins, split into universal and weapon-only, camo patterns included, the sights, and charms, which you can filter by season and kind (ranked, battle pass, esports…). Skins and charms show a preview Blender renders of the real item, once, then kept on disk. **Create Blender pack** exports everything and has Blender build one `.blend`: a collection per uniform, headgear and weapon skin, ready to switch on and off, weapons and charms next to the operator. Uniforms and headgear come from your install (the bundled [R6-parser](https://github.com/TrueShadow01/R6-parser) reads them; its add-on rebuilds the Siege materials); weapon skins and charms come from the game's download cache, so you get the ones the game has downloaded on your PC. The first time, build the asset index (a few minutes, about 130 MB); do it again after game updates.
+**Operators → Blender pack.** The roster comes with the game's own portraits and emblems, split into attackers and defenders. Pick an operator, then what goes in the pack: uniforms and headgear (with their names and seasons; Elite sets have the gold background), the operator's weapons with their magazine and **every skin the game has for them**, universal and weapon-only, camo patterns included, the sights, and **every charm in the game**, grouped by season and filterable by kind and rank. It all comes from the game itself: its shop catalog (names, seasons, rarity) and its own pictures (the 440x144 skin previews and the charm icons you see in the game). **Create Blender pack** exports everything and has Blender build one `.blend`: a collection per uniform, headgear, weapon skin and sight, ready to switch on and off, with weapons, sights and charms next to the operator. Uniforms, headgear and weapons come from your install (the bundled [R6-parser](https://github.com/TrueShadow01/R6-parser) reads them; its add-on rebuilds the Siege materials). Weapon skins and charms are streamed by the game: the ones it has downloaded on your PC can go in a pack, the others are marked *To download* until you look at them once in the game (Armory or Shop). The first time, build the asset index (a few minutes, about 130 MB); do it again after game updates.
 
 **Armory (in development).** This is the weapon → skin → Blender pipeline. Skins are resolved through the game's own references (cosmetic record → material selection → material bundle → texture UIDs), never guessed from how they look. Every skin will carry that chain as proof.
-
-![Operators](docs/operators.png)
 
 ## Status
 
@@ -58,7 +87,8 @@ This is how the original **Glacier for the 552 Commando (Y5S4)** was recovered. 
 | --- | --- |
 | Vault: season list, Steam QR sign-in, file list, selective download, cancel, resume | Working |
 | Workspace detection (Ubisoft Connect, Steam libraries, Blender) | Working |
-| Operator Blender pack: uniforms and headgear (with icons), weapons with magazine, weapon skins (camo patterns too), sights and charms in one `.blend`, with previews | Working (78 operators on the current build; checked in Blender 5.2). Skins and charms: the ones in the game's download cache. A few sights (Holo A) can't be exported yet |
+| Operator Blender pack: uniforms and headgear, weapons with magazine, weapon skins (camo patterns too), sights and charms in one `.blend` | Working (78 operators on the current build; checked in Blender 5.2). A few sights (Holo A) can't be exported yet |
+| The game's whole catalog with its own pictures: every weapon skin (4,765) and charm (2,489), with seasons, rarity and ranks | Working. Exporting needs the item downloaded by the game; the rest is marked *To download* |
 | Weapons, attachments, skins, charms, Blender scene with skin switcher | Method proven by hand on the 552 Commando; app integration next |
 | Installer and portable build, no dependencies | Working |
 | Steam sign-in: QR code, or account name and password with Steam Guard | Working |
@@ -103,7 +133,9 @@ To build the installer and the portable exe into `dist/`, run `py -3 -m pip inst
 Electron + React (src/)  ── JSON lines over stdio ──  Python engine (engine/reliquary)
                                                         ├─ vault.py      DepotDownloader: QR, manifests, downloads
                                                         ├─ env.py        game / Blender / Oodle detection
-                                                        ├─ operators.py  roster via the vendored R6-parser
+                                                        ├─ operators.py  roster, pictures and packs via the vendored R6-parser
+                                                        ├─ catalog.py    the game's shop catalog: every skin and charm
+                                                        ├─ dcache.py     the game's download cache (streamed skins and charms)
                                                         └─ r6parser/     Forge archives, meshes, textures (GPL-3.0)
 ```
 

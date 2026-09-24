@@ -12,25 +12,26 @@ const send = (channel: string, value: unknown) => {
 }
 const engine = new Engine((event) => send('engine:event', event))
 
-/** Fade the real window (not just the page), so closing and minimising feel like the app's own. */
+/** Fade the real window (not just the page), so closing and minimising feel like the app's own. One fade at a
+ * time: restoring from the taskbar fires 'restore' and 'focus' together, and two fades would fight (flicker). */
+let stopFade: (() => void) | undefined
 function fade(to: number, ms: number): Promise<void> {
+  stopFade?.()
   return new Promise((resolve) => {
     const target = window
     if (!target || target.isDestroyed()) return resolve()
     const from = target.getOpacity()
     const start = Date.now()
     const timer = setInterval(() => {
-      if (target.isDestroyed()) {
-        clearInterval(timer)
-        return resolve()
-      }
-      const k = Math.min(1, (Date.now() - start) / ms)
-      target.setOpacity(from + (to - from) * (1 - (1 - k) ** 3))
-      if (k === 1) {
-        clearInterval(timer)
-        resolve()
-      }
+      const k = target.isDestroyed() ? 1 : Math.min(1, (Date.now() - start) / ms)
+      if (!target.isDestroyed()) target.setOpacity(from + (to - from) * (1 - (1 - k) ** 3))
+      if (k === 1) stopFade?.()
     }, 16)
+    stopFade = () => {
+      clearInterval(timer)
+      stopFade = undefined
+      resolve()
+    }
   })
 }
 

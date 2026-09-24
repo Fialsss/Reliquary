@@ -1,17 +1,50 @@
-<p align="center">
-  <img src="resources/icon.png" width="96" alt="" />
-</p>
+<div align="center">
+  <img src="resources/icon.png" width="112" alt="Reliquary" />
+  <h1>Reliquary</h1>
+  <p>
+    <b>Rainbow Six Siege, dritto in Blender.</b><br />
+    Ogni operatore, skin d'arma e ciondolo del gioco, con le sue immagini, in un unico .blend pronto da usare. Le stagioni ritirate da Steam, un archivio alla volta.
+  </p>
+  <p>
+    <img src="https://img.shields.io/badge/Windows-0b0b0d?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
+    <img src="https://img.shields.io/badge/early%20preview-ffb347?style=for-the-badge" alt="Early preview" />
+    <img src="https://img.shields.io/badge/GPL--3.0%20%2B%20attribution-3ddc97?style=for-the-badge" alt="GPL-3.0 with attribution" />
+  </p>
+  <p><a href="README.md">Read in English</a></p>
+  <img src="docs/reliquary.gif" width="820" alt="Reliquary: operatori, skin d'arma e ciondoli" />
+</div>
 
-<h1 align="center">Reliquary</h1>
+> [!WARNING]
+> Reliquary è ancora in sviluppo: aspettati qualche imperfezione. Archivio e Operatori funzionano dall'inizio alla fine; la pagina Armeria è in costruzione. È un progetto di fan, non affiliato, approvato né sponsorizzato da Ubisoft o Valve.
 
-<p align="center">
-  Uno studio desktop per gli asset di Rainbow Six Siege: stagioni ritirate, operatori, armi, skin e ciondoli, dritti in Blender.<br />
-  <a href="README.md">Read in English</a>
-</p>
+## Uno sguardo
 
-![Reliquary in azione](docs/reliquary.gif)
-
-> **Anteprima.** Archivio e Operatori funzionano dall'inizio alla fine. L'Armeria è in costruzione: vedi [Stato](#stato).
+<table>
+  <tr>
+    <td width="50%"><img src="docs/operators.png" alt="Operatori" /></td>
+    <td width="50%"><img src="docs/skins.png" alt="Skin d'arma" /></td>
+  </tr>
+  <tr>
+    <td><b>Operatori.</b> I ritratti e gli emblemi del gioco, attaccanti e difensori separati.</td>
+    <td><b>Tutte le skin d'arma.</b> L'intero catalogo di ogni arma, con le anteprime del gioco: universali e solo per quell'arma.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/charms.png" alt="Ciondoli" /></td>
+    <td><img src="docs/ranked.png" alt="Ciondoli ranked" /></td>
+  </tr>
+  <tr>
+    <td><b>Tutti i 2.489 ciondoli,</b> stagione per stagione, con icone, rarità e ricerca.</td>
+    <td><b>Filtri.</b> Per stagione, tipo (ranked, battle pass, esports, chibi, eventi) e grado, dal Rame al Campione.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/vault.png" alt="L'Archivio" /></td>
+    <td><img src="docs/home.png" alt="Home" /></td>
+  </tr>
+  <tr>
+    <td><b>L'Archivio.</b> Tutte le 43 stagioni ancora su Steam, scaricate un archivio alla volta.</td>
+    <td><b>Home.</b> La postazione a colpo d'occhio: Steam, gioco, Blender, Oodle.</td>
+  </tr>
+</table>
 
 ## Download
 
@@ -42,15 +75,11 @@ Poi **Apri questa build** nella stessa pagina: Reliquary legge un archivio di te
 
 È così che è stata recuperata la **Glacier originale del 552 Commando (Y5S4)**, che nel gioco attuale non esiste più. Le sue texture stavano in un solo archivio da 9 GB della build Neon Dawn.
 
-![L'Archivio](docs/vault.png)
-
 **Rilevamento della postazione.** Reliquary trova il gioco tramite Ubisoft Connect o le librerie di Steam, trova Blender e ti dice cosa manca.
 
-**Operatori → pack Blender.** Il roster arriva con i ritratti e gli emblemi del gioco, diviso in attaccanti e difensori. Scegli un operatore e cosa mettere nel pack: uniformi e copricapi dalle icone del gioco (i set Elite hanno lo sfondo dorato), le sue armi (col caricatore) e le loro skin, divise in universali e solo per quell'arma, mimetiche comprese, i mirini e i ciondoli, filtrabili per stagione e tipo (ranked, battle pass, esports…). Skin e ciondoli hanno un'anteprima dell'oggetto vero, renderizzata da Blender una volta sola e poi tenuta su disco. **Crea pack Blender** esporta tutto e fa costruire a Blender un unico `.blend`: una collezione per ogni uniforme, copricapo e skin d'arma, da accendere e spegnere, con armi e ciondoli accanto all'operatore. Uniformi e copricapi arrivano dalla tua installazione (li legge [R6-parser](https://github.com/TrueShadow01/R6-parser), il cui add-on ricostruisce i materiali di Siege); skin d'arma e ciondoli dalla cache dei download del gioco, quindi trovi quelli che il gioco ha scaricato sul tuo PC. La prima volta crea l'indice degli asset (pochi minuti, circa 130 MB); rifallo dopo gli aggiornamenti del gioco.
+**Operatori → pack Blender.** Il roster arriva con i ritratti e gli emblemi del gioco, diviso in attaccanti e difensori. Scegli un operatore e cosa mettere nel pack: uniformi e copricapi (con nomi e stagioni; i set Elite hanno lo sfondo dorato), le sue armi col caricatore e **tutte le skin che il gioco ha per loro**, universali e solo per quell'arma, mimetiche comprese, i mirini e **tutti i ciondoli del gioco**, divisi per stagione e filtrabili per tipo e grado. Tutto arriva dal gioco stesso: il suo catalogo del negozio (nomi, stagioni, rarità) e le sue immagini (le anteprime 440x144 delle skin e le icone dei ciondoli che vedi nel gioco). **Crea pack Blender** esporta tutto e fa costruire a Blender un unico `.blend`: una collezione per ogni uniforme, copricapo, skin d'arma e mirino, da accendere e spegnere, con armi, mirini e ciondoli accanto all'operatore. Uniformi, copricapi e armi arrivano dalla tua installazione (li legge [R6-parser](https://github.com/TrueShadow01/R6-parser), il cui add-on ricostruisce i materiali di Siege). Skin d'arma e ciondoli il gioco li scarica quando servono: quelli già sul tuo PC possono andare nel pack, gli altri sono segnati *Da scaricare* finché non li guardi una volta nel gioco (Armeria o Negozio). La prima volta crea l'indice degli asset (pochi minuti, circa 130 MB); rifallo dopo gli aggiornamenti del gioco.
 
 **Armeria (in sviluppo).** È la catena arma → skin → Blender. Le skin vengono ritrovate seguendo i riferimenti interni del gioco (record cosmetico → selezione materiale → bundle materiale → UID delle texture), mai indovinate dall'aspetto. Ogni skin porterà con sé quella catena come prova.
-
-![Operatori](docs/operators.png)
 
 ## Stato
 
@@ -58,7 +87,8 @@ Poi **Apri questa build** nella stessa pagina: Reliquary legge un archivio di te
 | --- | --- |
 | Archivio: elenco stagioni, accesso Steam con QR, elenco file, download selettivo, annulla, ripresa | Funziona |
 | Rilevamento postazione (Ubisoft Connect, librerie Steam, Blender) | Funziona |
-| Pack Blender dell'operatore: uniformi e copricapi (con icone), armi col caricatore, skin d'arma (anche mimetiche), mirini e ciondoli in un unico `.blend`, con anteprime | Funziona (78 operatori sulla build attuale; provato in Blender 5.2). Skin e ciondoli: quelli nella cache dei download del gioco. Alcuni mirini (Holo A) non si possono ancora esportare |
+| Pack Blender dell'operatore: uniformi e copricapi, armi col caricatore, skin d'arma (anche mimetiche), mirini e ciondoli in un unico `.blend` | Funziona (78 operatori sulla build attuale; provato in Blender 5.2). Alcuni mirini (Holo A) non si possono ancora esportare |
+| L'intero catalogo del gioco con le sue immagini: ogni skin d'arma (4.765) e ciondolo (2.489), con stagioni, rarità e gradi | Funziona. Per esportare un oggetto serve che il gioco l'abbia scaricato; gli altri sono segnati *Da scaricare* |
 | Armi, accessori, skin, ciondoli, scena Blender con cambia-skin | Metodo dimostrato a mano sul 552 Commando, integrazione nell'app come prossimo passo |
 | Installer e versione portable, senza dipendenze | Funziona |
 | Accesso Steam: codice QR, oppure nome account e password con Steam Guard | Funziona |
@@ -103,7 +133,9 @@ Per creare l'installer e l'exe portable in `dist/`: `py -3 -m pip install pyinst
 Electron + React (src/)  ── righe JSON su stdio ──  motore Python (engine/reliquary)
                                                      ├─ vault.py      DepotDownloader: QR, manifest, download
                                                      ├─ env.py        rilevamento gioco / Blender / Oodle
-                                                     ├─ operators.py  roster tramite R6-parser incluso
+                                                     ├─ operators.py  roster, immagini e pack tramite R6-parser incluso
+                                                     ├─ catalog.py    il catalogo del negozio del gioco: ogni skin e ciondolo
+                                                     ├─ dcache.py     la cache dei download del gioco (skin e ciondoli scaricati)
                                                      └─ r6parser/     archivi Forge, modelli, texture (GPL-3.0)
 ```
 

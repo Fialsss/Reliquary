@@ -61,12 +61,28 @@ class NamesTest(unittest.TestCase):
         defender = noise + before + struct.pack("<IQ", 1, 0x47A08A8F8C) + after
         self.assertEqual((operators._side(attacker), operators._side(defender), operators._side(b"")), ("attack", "defense", ""))
 
-    def test_season_code_in_a_name(self):
-        from reliquary import dcache
+    def test_catalog_names_seasons_and_kinds(self):
+        from reliquary import catalog
 
-        self.assertEqual(dcache.season("W_Charm_Y8S2_CaptainLaserhawk"), "Y8S2")
-        self.assertEqual(dcache.season("W_Charm_y11s2_battlepass"), "Y11S2")
-        self.assertEqual(dcache.season("W_Charm_Chibi_Pulse"), "")
+        def item(name_id, *tags):
+            return {"nameId": name_id, "tags": list(tags)}
+
+        platinum = item("weapon_charms_universal.Y1S3.Season_Rank_reward_Platinum_.DUST_LINE_PLATINUM", "Y1S3", "rarity_superrare")
+        self.assertEqual(catalog.describe(platinum), {"name": "Dust Line Platinum", "season": "Y1S3", "rarity": "superrare"})
+        self.assertEqual((catalog.family(platinum), catalog.rank(platinum)), ("ranked", "platinum"))
+        hex_named = item("Charm.Y8S3.GO_Y8S3_Influencer_Rasco.0x5c7390c1ee", "Y8S3")
+        self.assertEqual(catalog.name(hex_named), "Influencer Rasco")
+        glory = item("weapon_skins.Y1_MC.R4-C.VC-W_AR_R4C-FBI-R6Siege_Unique-PerCTU.GLORY", "rarity_rare")
+        self.assertEqual((catalog.name(glory), catalog.season(glory)), ("Glory", "Y1"))
+        major = item("weapon_charms_universal.Y5S2.Drop_TBD_02.SIX_MAJOR_USA_COPPER_2020", "Y5S2")
+        self.assertEqual((catalog.family(major), catalog.rank(major)), ("esports", ""))
+
+    def test_cache_documents_meet_their_catalog_items(self):
+        from reliquary import catalog
+
+        entries = [{"_words": {"y3s2", "signature", "marble", "ancient"}}, {"_words": {"y4s2", "collection", "marble", "and", "gold"}}]
+        catalog.attach(entries, [{"file": "a", "w": {"signature", "marble"}}, {"file": "b", "w": {"marble"}}], lambda d: d["w"])
+        self.assertEqual([e.get("file") for e in entries], ["a", None])  # "marble" alone fits both: left alone
 
     def test_sight_names_read_like_the_game(self):
         self.assertEqual([operators._sight_name(n) for n in ("RedDot", "IRON SIGHT [PLACEHOLDER]", "EosHolo", "SCOPE 2.5x A")],

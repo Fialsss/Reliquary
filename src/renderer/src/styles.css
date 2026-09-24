@@ -1314,23 +1314,52 @@ p {
   justify-content: center;
 }
 .pack-counts {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-.pack-counts span {
+.pack-count {
+  display: flex;
+  align-items: center;
+  gap: 11px;
   padding: 10px 12px;
   border-radius: var(--r2);
-  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--line-2);
-  color: var(--ink-3);
-  font-size: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  transition:
+    background var(--t2) var(--e-out),
+    border-color var(--t2) var(--e-out),
+    color var(--t2) var(--e-out);
 }
-.pack-counts b {
-  display: block;
+.pack-count:hover {
   color: var(--ink);
-  font-size: 20px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.pack-count.on {
+  color: var(--ink);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+}
+.pack-count span {
+  flex: 1;
+}
+.pack-count b {
+  min-width: 28px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  text-align: center;
+  color: var(--ink-3);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 12px;
   font-weight: 700;
+}
+.pack-count.has b {
+  color: var(--s0);
+  background: #fff;
 }
 .pack-open .btn {
   flex: 1;
@@ -1403,11 +1432,17 @@ p {
 .cosmetic.wide .pic {
   aspect-ratio: 7 / 4;
 }
+.cosmetic.skin .pic {
+  aspect-ratio: 2.4; /* the game's weapon previews, trimmed to the weapon */
+}
 .cosmetic.square .pic {
   aspect-ratio: 1;
 }
-.cosmetic.render .pic {
-  background: radial-gradient(80% 70% at 50% 45%, rgba(255, 255, 255, 0.08), transparent 70%);
+.cosmetic:is(.skin, .wide, .square) .pic {
+  /* a lit backdrop, so dark skins and charms still read */
+  background:
+    radial-gradient(70% 85% at 50% 50%, rgba(190, 205, 235, 0.26), rgba(150, 165, 200, 0.08) 58%, transparent 82%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent);
 }
 .cosmetic .pic img {
   position: absolute;
@@ -1419,10 +1454,63 @@ p {
   animation: fadein 0.35s ease both;
   transition: transform var(--t3) var(--e-out);
 }
-.cosmetic.render .pic img {
+.cosmetic:is(.skin, .wide, .square) .pic img {
   object-fit: contain;
-  padding: 7%;
+  padding: 6%;
   filter: drop-shadow(0 14px 16px rgba(0, 0, 0, 0.55));
+}
+.cosmetic.skin .pic img {
+  padding: 6% 8%;
+}
+/* rarity as the game colours it: a thin bar under the picture */
+.cosmetic[data-rarity] .pic::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 3px;
+  background: var(--rarity, transparent);
+}
+.cosmetic[data-rarity='uncommon'] {
+  --rarity: #3ddc97;
+}
+.cosmetic[data-rarity='rare'] {
+  --rarity: #4fa8ff;
+}
+.cosmetic[data-rarity='superrare'] {
+  --rarity: #b779ff;
+}
+.cosmetic[data-rarity='legendary'] {
+  --rarity: #ffb347;
+}
+.cosmetic-sub {
+  margin-top: -9px;
+  padding: 0 10px 11px;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+/* not downloaded by the game yet: shown all the same (it's a preview), the badge says so */
+.cosmetic.missing:hover {
+  transform: none;
+  border-color: var(--card-line);
+}
+.cosmetic-cloud {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  font-size: 10.5px;
+  font-weight: 600;
 }
 .cosmetic:hover .pic img {
   transform: scale(1.06);
@@ -1508,7 +1596,7 @@ p {
 }
 .skin-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 14px;
 }
 .charm-grid {
@@ -1883,19 +1971,6 @@ p {
     filter: blur(6px);
   }
 }
-@keyframes app-min {
-  to {
-    opacity: 0;
-    transform: translateY(22px) scale(0.97);
-  }
-}
-@keyframes app-settle {
-  from {
-    opacity: 0.6;
-    transform: scale(0.985);
-    filter: blur(3px);
-  }
-}
 @keyframes pop {
   from {
     opacity: 0;
@@ -1907,12 +1982,6 @@ p {
 }
 .app.closing {
   animation: app-out 0.2s ease-in forwards;
-}
-.app.minimizing {
-  animation: app-min 0.16s ease-in forwards;
-}
-.app.settle {
-  animation: app-settle 0.42s var(--e-out);
 }
 
 /* season tiles glow in their own hue */

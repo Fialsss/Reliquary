@@ -22,7 +22,7 @@ const NAV = [
   ['settings', SlidersHorizontal]
 ] as const
 
-type Motion = '' | 'closing' | 'minimizing' | 'settle'
+type Motion = '' | 'closing'
 
 function firstPage(): Page {
   const hash = location.hash.slice(1)
@@ -65,14 +65,13 @@ export default function App() {
   }, [refresh])
   useEngineEvent('engine.exit', () => setEngine('offline'))
 
-  // The window fades itself; the page adds depth: shrink on exit, settle on return.
+  // The window fades itself on minimise and restore; the page only shrinks away on close. (Animating the page
+  // on minimise left it hidden until the restore message arrived, then it jumped in: a buggy-looking return.)
   useEffect(
     () =>
       api.onWindow((state) => {
-        if (state === 'closing' || state === 'minimizing') return setMotion(state)
+        if (state === 'closing') return setMotion(state)
         if (state === 'maximize' || state === 'unmaximize') setMaximized(state === 'maximize')
-        setMotion('settle')
-        setTimeout(() => setMotion(''), 420)
       }),
     []
   )

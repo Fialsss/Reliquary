@@ -17,7 +17,6 @@ import functools
 import io
 import json
 import os
-import queue
 import re
 import struct
 import subprocess
@@ -34,7 +33,7 @@ PARSER = ENGINE / "r6parser"
 sys.path.insert(0, str(PARSER))
 
 TEXTURE_MAP_SPEC = 0x4F09331E
-ICON_BOX = (300, 600)  # portraits are 436x736, cosmetic icons 252x212, sight icons 488x280
+ICON_BOX = (1024, 1024)  # the pictures at their own size: portraits 436x736, skin previews 440x144, charms 268x220…
 _busy = threading.Lock()  # indexing and exporting both read the whole game: one at a time
 _types_lock = threading.Lock()  # guards the parser's module-level KEEP_TYPES while a reader uses it
 
@@ -172,8 +171,9 @@ def _is_cosmetic(record) -> bool:
     return record.file_type in (BODY_TYPE, HEAD_TYPE)
 
 
-def _describe(uid: int, record, records: dict) -> dict:
+def _describe(uid: int, record, records: dict, shop: dict) -> dict:
     from src.operator_registry import BODY_TYPE, DEFAULT_NAME_KEY, _localized_text
+    from . import catalog
 
     label, key = "", 0
     ui = records.get(_u64(record.data, 53))
@@ -183,18 +183,24 @@ def _describe(uid: int, record, records: dict) -> dict:
         except ValueError:
             pass
     label = label.lstrip("!")
+    # the catalog item (the record names its GameObjectID) has the name and season; template labels
+    # (_TPL__UNF_2D…) aren't names
+    item = next((shop[u] for o in range(len(record.data) - 7) if (u := _u64(record.data, o)) in shop), None)
+    named = catalog.describe(item) if item else {"name": "", "season": "", "rarity": ""}
     return {"uid": f"{uid:016X}", "kind": "uniform" if record.file_type == BODY_TYPE else "headgear",
             "default": key == DEFAULT_NAME_KEY,
-            # template labels (_TPL__UNF_2D…) aren't names; the real ones live in the localization tables
-            "label": "" if "TPL" in label.upper() or label.upper() == "NONE" else label}
+            "label": named["name"] or ("" if "TPL" in label.upper() or label.upper() == "NONE" else label),
+            "season": named["season"], "rarity": named["rarity"]}
 
 
 @method("operators.cosmetics")
 def cosmetics(uid: str) -> dict:
     """An operator's uniforms and headgears: the default first, then newest first."""
+    from . import catalog
+
     owner = int(uid, 16)
-    records = _records()
-    items = [_describe(u, v[0], records) for u, v in records.items()
+    records, shop = _records(), catalog.items()
+    items = [_describe(u, v[0], records, shop) for u, v in records.items()
              if _is_cosmetic(v[0]) and _u64(v[0].data, 105) == owner]
     items.sort(key=lambda i: (not i["default"], -int(i["uid"], 16)))
     return {kind: [i for i in items if i["kind"] == kind] for kind in ("uniform", "headgear")}
@@ -241,10 +247,11 @@ def _first_asset(data: bytes, types: set[int], skip: int = 0):
     return None
 
 
-def _picture_record(uid: int, records: dict, emblem: bool = False) -> bytes:
-    """The record whose texture map spec is an item's picture: a uniform's or headgear's UI record (+53), an
-    operator's card (665 bytes past the loadout table: the portrait) or badge (its appearance: the emblem),
-    a sight's UI record."""
+def _picture_record(uid: int, records: dict, emblem: bool = False) -> tuple[bytes, float]:
+    """The record whose texture map specs are an item's pictures, and which of them to take (see _picture_image): a
+    uniform's or headgear's UI record (+53), an operator's card (665 bytes past the loadout table: the portrait)
+    or badge (its appearance: the emblem), a sight's UI record, a skin definition (a 100x132 swatch and the
+    440x144 preview), a charm's UI record (+62: its icon and a 60x60 one)."""
     from src.operator_registry import OPERATOR_TYPE
 
     more = _more_records()
@@ -255,26 +262,56 @@ def _picture_record(uid: int, records: dict, emblem: bool = False) -> bytes:
             if emblem:
                 badge = next(more[u][0].data for o in range(base, len(record.data) - 7)
                              if (u := _u64(record.data, o)) in more and more[u][0].file_type == BADGE)
-                return more[_u64(badge, 8)][0].data
-            return more[_u64(record.data, base + 665)][0].data
-        return records[_u64(record.data, 53)][0].data
-    sight = more[uid][0].data
-    return next(more[u][0].data for o in range(len(sight) - 7) if (u := _u64(sight, o)) in more and more[u][0].file_type == SIGHT_UI)
+                return more[_u64(badge, 8)][0].data, 0
+            return more[_u64(record.data, base + 665)][0].data, 0
+        return records[_u64(record.data, 53)][0].data, 0
+    record = more[uid][0]
+    if record.file_type == SKIN_DEF:
+        return record.data, 440 / 144  # the weapon preview's shape, not the swatch or a banner
+    if record.file_type == CHARM:
+        return more[_u64(record.data, 62)][0].data, -1
+    return next(more[u][0].data for o in range(len(record.data) - 7)
+                if (u := _u64(record.data, o)) in more and more[u][0].file_type == SIGHT_UI), 0
+
+
+def _picture_image(data: bytes, pick: float):
+    """The picture behind a record's texture map specs: 0 the first spec's, -1 the one with the most pixels, a
+    ratio the one closest to that shape (a skin definition holds a 100x132 swatch, the 440x144 preview and
+    sometimes a banner)."""
+    from src.database import load_asset_index
+    from src.model import TEXTURE_TYPES, load_asset_payload
+
+    uids = [u for u in dict.fromkeys(_u64(data, o) for o in range(len(data) - 7)) if u > 0xFFFFFFFF]
+    index, best = load_asset_index(_database(), set(uids)), None
+    for uid in uids:
+        spec = index.primary(uid)
+        if spec is None or spec.file_type != TEXTURE_MAP_SPEC:
+            continue
+        payload = load_asset_payload(spec)
+        # 05A61FAD: the full-size GUI map, when there is one; 9468B9E2: its low-res twin
+        texture = _first_asset(payload, {0x05A61FAD}, skip=spec.uid) or _first_asset(payload, {0x9468B9E2, *TEXTURE_TYPES}, skip=spec.uid)
+        try:
+            image = _gui_image(load_asset_payload(texture)) if texture is not None else None
+        except ValueError:
+            image = None
+        score = (lambda i: (-abs(i.width / i.height - pick), i.width * i.height)) if pick > 0 else (lambda i: (i.width * i.height,))
+        if image is not None and (best is None or score(image) > score(best)):
+            best = image
+        if best is not None and pick == 0:
+            break
+    return best
 
 
 def _make_icon(uid: int, records: dict, path: Path, emblem: bool = False) -> None:
     """Item → picture record → texture map spec → GUI texture → a WebP that keeps the transparency."""
-    from src.model import TEXTURE_TYPES, load_asset_payload
-
-    spec = _first_asset(_picture_record(uid, records, emblem), {TEXTURE_MAP_SPEC})
-    if spec is None:
-        raise ValueError("no icon")
-    spec_data = load_asset_payload(spec)
-    # 05A61FAD: the full-size GUI map, when there is one; 9468B9E2: its low-res twin
-    texture = _first_asset(spec_data, {0x05A61FAD}, skip=spec.uid) or _first_asset(spec_data, {0x9468B9E2, *TEXTURE_TYPES}, skip=spec.uid)
-    if texture is None:
-        raise ValueError("no icon texture")
-    image = _gui_image(load_asset_payload(texture))
+    data, pick = _picture_record(uid, records, emblem)
+    image = _picture_image(data, pick)
+    if image is None:
+        raise ValueError("no picture")
+    if pick and image.getbbox():  # skin previews and charm icons float in empty space: trim it, keep a small margin
+        left, top, right, bottom = image.getchannel("A").getbbox() or (0, 0, image.width, image.height)
+        pad = max(4, (right - left) // 40)
+        image = image.crop((max(0, left - pad), max(0, top - pad), min(image.width, right + pad), min(image.height, bottom + pad)))
     image.thumbnail(ICON_BOX)
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path, quality=88)
@@ -282,11 +319,11 @@ def _make_icon(uid: int, records: dict, path: Path, emblem: bool = False) -> Non
 
 @method("operators.icons")
 def icons(uids: list[str]) -> dict[str, str]:
-    """The game's own pictures of operators (portraits; "<uid>.emblem" for their badge), uniforms, headgear and
-    sights, as data URIs, decoded once and kept in the app folder."""
+    """The game's own pictures of operators (portraits; "<uid>.emblem" for their badge), uniforms, headgear,
+    sights, weapon skins (their definition's preview) and charms, as data URIs, decoded once and kept on disk."""
     if not _database().is_file():
         return {}
-    records, folder, out = _records(), settings.HOME / "icons", {}
+    records, folder, out = _records(), settings.HOME / "pictures2", {}  # 2: previews trimmed to their item
     for text in uids:
         path = folder / f"{text}.webp"
         if not path.is_file():
@@ -344,6 +381,9 @@ WEAPON, WEAPON_NAME, SKIN_ENTRY, SKIN_DEF = 0x9622A2AB, 0x62709064, 0x32EFC7DC, 
 # and its UI record (name, icon specs)
 PORTRAIT, BADGE, SIGHT, SIGHT_UI = 0xE592C2BB, 0x2A58CB6D, 0x7083B532, 0xBF157A00
 MAGAZINE = 0xD6767312  # a weapon's magazine (default one first, variants after): appearance at +8 → a model
+# a charm (UI record at +62, catalog record at +98), a charm's UI record (icons), a charm's catalog record and every
+# other item's: the GameObjectIDs of the game's shop list (see catalog.py)
+CHARM, CHARM_UI, CHARM_ITEM, ITEM = 0xBEDB88EF, 0xC7DDD448, 0x0275F0CF, 0xAF84856B
 MODEL_TYPES = (0xADE00798, 0x1D2E4B8F)
 # names the registry and the cache spell too differently to meet on their own
 ALIASES = {"remingtonr4": ("r4c", "m4", "m4a1"), "serbu": ("supershorty",), "57usg": ("usg57",)}
@@ -351,13 +391,13 @@ ALIASES = {"remingtonr4": ("r4c", "m4", "m4a1"), "serbu": ("supershorty",), "57u
 
 @functools.lru_cache(maxsize=1)
 def _read_more_records(archive: str, modified: int) -> dict:
-    """The registry records the parser doesn't keep: weapons, skins, sights, operator cards."""
+    """The registry records the parser doesn't keep: weapons, skins, sights, charms, operator cards, catalog items."""
     import src.operator_registry as registry
 
     with _types_lock:  # the parser's reader filters on its module-level KEEP_TYPES
         saved = registry.KEEP_TYPES
         registry.KEEP_TYPES = {WEAPON, WEAPON_NAME, SKIN_ENTRY, SKIN_DEF, PORTRAIT, BADGE, SIGHT, SIGHT_UI, MAGAZINE,
-                               registry.APPEARANCE_TYPE}
+                               CHARM, CHARM_UI, CHARM_ITEM, ITEM, registry.APPEARANCE_TYPE}
         try:
             return registry._read_records(Path(archive))
         finally:
@@ -561,21 +601,22 @@ def _add_magazine(folder: Path, magazine: str, roles: dict) -> None:
         gltf.write_text(json.dumps(doc), encoding="utf-8")
 
 
-def _weapon_gltf(model: str, magazine: str, skin: str, folder: Path, low: bool = False) -> None:
+def _weapon_gltf(model: str, magazine: str, skin: str, folder: Path) -> None:
     """A weapon as glTF: its installed mesh and magazine, in a skin from the download cache ("" = none)."""
     from src.gltf import write_gltf
     from . import dcache
 
-    roles = dcache.textures(skin, folder, low) if skin else {}
+    roles = dcache.textures(skin, folder) if skin else {}
     write_gltf(int(model, 16), _weapon_parts(model), folder, **roles)
     _add_magazine(folder, magazine, roles)
 
 
 @method("operators.weapons")
 def weapons(uid: str) -> list[dict]:
-    """The operator's weapons (loadout slots), each with the skins of it the game has downloaded."""
+    """The operator's weapons (loadout slots), each with every skin the game has for it (the catalog), `file` on
+    the ones the game has downloaded."""
     from src.model import load_asset_payload, read_mesh_bindings
-    from . import dcache
+    from . import catalog, dcache
 
     operator = _records().get(int(uid, 16))
     if not operator or not _database().is_file():
@@ -597,124 +638,15 @@ def weapons(uid: str) -> list[dict]:
         name_record = records.get(_u64(weapon[0].data, 423))
         label = _text(name_record[0].data) if name_record else ""
         bones = sorted({b for binding in read_mesh_bindings(load_asset_payload(model)).values() for b in binding.bone_ids})
-        matched = match_skins(label, bones, _skin_names(weapon[0].data, records), skins)
-        unique = {s["material"] + s["name"]: s for s in matched}.values()
+        matched = match_skins(label, bones, _skin_names(weapon[0].data, records), skins)  # this weapon's downloads
+        unique = list({s["material"] + s["name"]: s for s in matched}.values())
         out.append({"uid": f"{weapon_uid:016X}", "name": label.replace("Name", "").strip(), "model": f"{model.uid:016X}",
-                    "magazine": _magazine(weapon[0].data, records),
-                    "code": next(iter(unique))["code"] if unique else "",
-                    # universal: the same look on every weapon (UNISKIN sheets, camo patterns); the rest are this weapon's own
-                    "skins": sorted(({"id": s["file"], "name": s["name"], "universal": bool(s.get("pattern")) or "UNISKIN" in s["material"].upper()}
-                                     for s in unique), key=lambda s: s["name"].lower()),
-                    "sights": _sights(weapon[0].data, records)})
+                    "magazine": _magazine(weapon[0].data, records), "code": unique[0]["code"] if unique else "",
+                    "skins": catalog.weapon_skins(weapon[0].data, records, unique), "sights": _sights(weapon[0].data, records)})
     return out
 
 
 _list_weapons = weapons  # `pack` takes a `weapons` argument, which hides the function there
-
-
-# --------------------------------------------------------------- previews
-# Blender renders a preview of every skin (on its weapon) and charm, once. A few Blenders stay open and take
-# jobs as JSON lines, so a preview costs its export and ~0.2 s of rendering, not a Blender start.
-PREVIEW_WORKERS = 2
-_preview_jobs: queue.LifoQueue = queue.LifoQueue()  # newest first: the tab someone just opened
-_preview_pending: set[str] = set()
-_preview_workers: list[threading.Thread] = []
-_preview_lock = threading.Lock()
-
-
-def _preview_path(item: str, model: str) -> Path:
-    return settings.HOME / "previews" / (re.sub(r"[^0-9a-zA-Z]", "", f"{model}{item or 'base'}") + ".webp")
-
-
-def _data_uri(path: Path) -> str:
-    return "data:image/webp;base64," + base64.b64encode(path.read_bytes()).decode()
-
-
-def _richer(*renders: Path) -> Path:
-    """Of a charm seen from both faces, the one with more going on: the front has the art, the back is plain."""
-    from PIL import Image, ImageStat
-
-    def detail(path: Path) -> float:
-        with Image.open(path) as image:
-            rgba = image.convert("RGBA")
-            return ImageStat.Stat(rgba.convert("L"), mask=rgba.getchannel("A").point(lambda a: 255 if a > 128 else 0)).stddev[0]
-
-    return max((r for r in renders if r.is_file()), key=detail)
-
-
-def _preview_worker(blender: Path) -> None:
-    """One Blender kept open: export an item small, hand it over, turn its render into the cached WebP."""
-    import shutil
-    import tempfile
-
-    from PIL import Image
-    from . import dcache
-
-    work = Path(tempfile.mkdtemp(dir=settings.HOME / "previews"))
-    script = Path(__file__).resolve().parent / "blender_thumbs.py"
-    process, number = None, 0
-    while True:
-        item, model, magazine = _preview_jobs.get()
-        path, uri, folder = _preview_path(item, model), "", work / str(number := number + 1)
-        try:
-            if process is None or process.poll() is not None:
-                process = subprocess.Popen([str(blender), "--background", "--factory-startup", "--python", str(script), "--", "-"],
-                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
-                                           encoding="utf-8", errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-            if model:
-                _weapon_gltf(model, magazine, item, folder, low=True)
-            else:
-                dcache.charm_gltf(item, folder, low=True)
-            render = folder / "preview.png"
-            process.stdin.write(json.dumps({"folder": str(folder), "out": str(render), "kind": "weapon" if model else "charm"}) + "\n")
-            process.stdin.flush()
-            for line in process.stdout:
-                if line.startswith("THUMB "):
-                    break
-            if render.is_file():
-                with Image.open(_richer(render, Path(f"{render}.back.png"))) as image:
-                    image.save(path, quality=86)
-                uri = _data_uri(path)
-        except (ValueError, KeyError, OSError, StopIteration, AttributeError, struct.error) as error:
-            print(f"No preview for {item or model}: {error}", file=sys.stderr)
-        finally:
-            shutil.rmtree(folder, ignore_errors=True)
-            with _preview_lock:
-                _preview_pending.discard(f"{model}/{item}")
-        emit("operators.preview", {"id": item, "model": model, "uri": uri})
-
-
-@method("operators.thumbs")
-def thumbs(ids: list[str], model: str = "", magazine: str = "") -> dict[str, str]:
-    """Previews as data URIs: charms, or with `model` (and its `magazine`) the skins of that weapon ("" = none).
-    The ones made before come back at once; Blender renders the others in the background and each one arrives
-    as an operators.preview event. Without Blender, the item's texture stands in."""
-    from . import dcache
-
-    (settings.HOME / "previews").mkdir(parents=True, exist_ok=True)
-    out, missing = {}, []
-    for item in ids:
-        path = _preview_path(item, model)
-        (out.__setitem__(item, _data_uri(path)) if path.is_file() else missing.append(item))
-    blender, _ = env.find_blender()
-    if blender is None:
-        for item in (i for i in missing if i):
-            try:
-                dcache.thumbnail(item, _preview_path(item, model))
-                out[item] = _data_uri(_preview_path(item, model))
-            except (ValueError, KeyError, OSError, StopIteration, struct.error) as error:
-                print(f"No preview for {item}: {error}", file=sys.stderr)
-        return out
-    with _preview_lock:
-        for item in reversed(missing):  # a LIFO queue: this way the first one asked comes out first
-            if f"{model}/{item}" not in _preview_pending:
-                _preview_pending.add(f"{model}/{item}")
-                _preview_jobs.put((item, model, magazine))
-        while missing and len(_preview_workers) < PREVIEW_WORKERS:
-            worker = threading.Thread(target=_preview_worker, args=(blender,), daemon=True)
-            worker.start()
-            _preview_workers.append(worker)
-    return out
 
 
 # ------------------------------------------------------------------ packs
@@ -723,10 +655,10 @@ def thumbs(ids: list[str], model: str = "", magazine: str = "") -> dict[str, str
 def pack(uid: str, items: list[str], weapons: list[dict] | None = None, charms: list[str] | None = None) -> dict:
     """Export what was picked for an operator, then have Blender build one .blend with all of it.
 
-    items: uniform and headgear uids; weapons: [{"uid", "skins": [cache ids, "" = no skin], "sights": [sight uids]}];
-    charms: cache ids.
+    items: uniform and headgear uids; weapons: [{"uid", "skins": [skin ids, "" = no skin], "sights": [sight uids]}];
+    charms: charm ids. Skins and charms the game hasn't downloaded yet are left out and counted in "skipped".
     """
-    from . import dcache
+    from . import catalog, dcache
 
     _game()
     if not _database().is_file():
@@ -739,7 +671,7 @@ def pack(uid: str, items: list[str], weapons: list[dict] | None = None, charms: 
     if not any(i["kind"] == "uniform" for i, _ in picked) or not any(i["kind"] == "headgear" for i, _ in picked):
         raise Failure("error.packNeedsBoth")
     target = _pack_folder(operator.name)
-    jobs, manifest = [], {"name": operator.name, "items": []}
+    jobs, manifest, skipped = [], {"name": operator.name, "items": []}, 0
     for item, number in picked:
         appearance = records.get(_u64(records[int(item["uid"], 16)][0].data, 8))
         if not appearance:
@@ -752,12 +684,16 @@ def pack(uid: str, items: list[str], weapons: list[dict] | None = None, charms: 
     for row, choice in enumerate(w for w in weapons or [] if w.get("uid") in known):
         weapon = known[choice["uid"]]
         title = weapon["name"] or weapon["code"] or f"Weapon {row + 1}"
-        names = {s["id"]: s["name"] for s in weapon["skins"]}
+        skins = {s["id"]: s for s in weapon["skins"]}
         for skin in choice.get("skins") or ([] if choice.get("sights") else [""]):
+            if skin and not skins.get(skin, {}).get("file"):
+                skipped += 1  # not downloaded by the game yet
+                continue
+            name = skins[skin]["name"] if skin else ""
             # short, readable folders: Windows (and Blender with it) can't open paths past 260 characters
-            folder = target / "weapons" / _folder_name(title)[:40] / (_folder_name(names.get(skin, ""))[:40] if skin else "base")
-            jobs.append(("weapon", folder, (weapon["model"], weapon["magazine"], skin)))
-            manifest["items"].append({"kind": "weapon", "group": title, "name": f"{title} · {names.get(skin, 'no skin')}",
+            folder = target / "weapons" / _folder_name(title)[:40] / (_folder_name(name)[:40] if skin else "base")
+            jobs.append(("weapon", folder, (weapon["model"], weapon["magazine"], skins[skin]["file"] if skin else "")))
+            manifest["items"].append({"kind": "weapon", "group": title, "name": f"{title} · {name or 'no skin'}",
                                       "folder": str(folder), "offset": [0.75, 0.0, 1.3 - row * 0.3]})
         sights = {s["uid"]: s for s in weapon["sights"]}
         # sights in the weapon's row, to its right, one after the other
@@ -767,11 +703,13 @@ def pack(uid: str, items: list[str], weapons: list[dict] | None = None, charms: 
             jobs.append(("model", folder, int(sight["model"], 16)))
             manifest["items"].append({"kind": "sight", "group": title, "name": f"{title} · {label}", "folder": str(folder),
                                       "offset": [1.25 + column * 0.12, 0.0, 1.3 - row * 0.3]})
-    charm_names = {c["id"]: c["name"] for c in dcache.charms()} if charms else {}
-    for column, charm in enumerate(c for c in charms or [] if c in charm_names):
-        folder = target / "charms" / _folder_name(charm_names[charm])
-        jobs.append(("charm", folder, charm))
-        manifest["items"].append({"kind": "charm", "name": charm_names[charm], "folder": str(folder),
+    known_charms = {c["id"]: c for c in catalog.charms()} if charms else {}
+    ready = [known_charms[c] for c in charms or [] if known_charms.get(c, {}).get("file")]
+    skipped += len(charms or []) - len(ready)
+    for column, charm in enumerate(ready):
+        folder = target / "charms" / _folder_name(charm["name"])[:40]
+        jobs.append(("charm", folder, charm["file"]))
+        manifest["items"].append({"kind": "charm", "name": charm["name"], "folder": str(folder),
                                   "offset": [2.4 + (column % 6) * 0.12, 0.0, 1.3 - (column // 6) * 0.15]})
     if not _busy.acquire(blocking=False):
         raise Failure("error.opBusy")
@@ -794,7 +732,7 @@ def pack(uid: str, items: list[str], weapons: list[dict] | None = None, charms: 
     finally:
         _busy.release()
     emit("operators.progress", {"step": "done", "uid": uid, "done": 1, "total": 1, "file": ""})
-    return {"folder": str(target), "blend": str(blend) if blend else "", "items": len(manifest["items"])}
+    return {"folder": str(target), "blend": str(blend) if blend else "", "items": len(manifest["items"]), "skipped": skipped}
 
 
 def _build_blend(uid: str, target: Path, manifest: dict) -> Path | None:

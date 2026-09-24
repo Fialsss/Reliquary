@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Box, Check, ChevronDown, ChevronRight, Cpu, Database, FolderOpen, FolderSearch, Package, Search, Users, X } from 'lucide-react'
+import { ArrowLeft, Box, Check, ChevronDown, ChevronRight, CloudDownload, Cpu, Crosshair, Database, Focus, FolderOpen, FolderSearch, Gem, HardHat, Package, Search, Shirt, Users, X } from 'lucide-react'
 import type { PageProps } from '../App'
 import { api, bytes, useEngineEvent, type Operator } from '../api'
 import { hueOf, Shards } from '../art'
@@ -10,7 +10,7 @@ import { PageHead, Segmented, Spinner } from '../ui'
 type Read = { state: 'waiting' | 'reading' | 'ok' | 'outdated' | 'failed'; operators?: Operator[]; error?: string }
 type Index = { indexed: boolean; bytes: number; exports: string; busy: boolean }
 type Progress = { step: 'index' | 'cache' | 'export' | 'blend' | 'done'; uid?: string; done: number; total: number; file: string }
-type Cosmetic = { uid: string; kind: 'uniform' | 'headgear'; default: boolean; label: string }
+type Cosmetic = { uid: string; kind: 'uniform' | 'headgear'; default: boolean; label: string; season: string; rarity: string }
 type Cosmetics = { uniform: Cosmetic[]; headgear: Cosmetic[] }
 
 /**
@@ -254,25 +254,21 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
 
 type Side = 'all' | 'attack' | 'defense'
 
-type Skin = { id: string; name: string; universal: boolean }
+type Skin = { id: string; icon: string; name: string; season: string; rarity: string; universal: boolean; file: string }
 type Sight = { uid: string; name: string; model: string }
 type Weapon = { uid: string; name: string; model: string; magazine: string; code: string; skins: Skin[]; sights: Sight[] }
-type Charm = { id: string; name: string; season: string }
+type Charm = { id: string; icon: string; name: string; season: string; rarity: string; family: string; rank: string; file: string }
 type Tab = 'uniform' | 'headgear' | 'weapon' | 'sight' | 'charm'
-/** A picture to fetch: the game's own (uniforms, headgear, sights) or a Blender preview (skins on their weapon, charms). */
-type Want = { key: string; id: string; method: 'operators.icons' | 'operators.thumbs'; model?: string; magazine?: string }
 
 const TABS: Tab[] = ['uniform', 'headgear', 'weapon', 'sight', 'charm']
-// charm families, from their names: ranked rewards (by rank), battle pass, esports, chibi, events, the rest
-const FAMILIES: [string, RegExp][] = [
-  ['ranked', /season reward|reward s\d|ranked|champion|diamond|emerald|platinum|copper|bronze/i],
-  ['battlepass', /battle ?pass|\bbp\b/i],
-  ['esports', /e-?sports?|pro ?league|pro ?team|major|invitational|\bsi\b|r6 ?cup|go4r6|proteams?/i],
-  ['chibi', /chibi/i],
-  ['event', /event|collection|halloween|christmas|snow|summer|chroma|showdown|doktor|lunar|new year/i]
-]
-const familyOf = (name: string) => FAMILIES.find(([, test]) => test.test(name))?.[0] ?? 'other'
-const yearOf = (c: Charm) => (c.season ? c.season.replace(/S\d$/, '') : 'none')
+const TAB_ICONS = { uniform: Shirt, headgear: HardHat, weapon: Crosshair, sight: Focus, charm: Gem }
+const FAMILIES = ['ranked', 'battlepass', 'esports', 'chibi', 'event', 'other']
+const RANKS = ['copper', 'bronze', 'silver', 'gold', 'platinum', 'emerald', 'diamond', 'champion']
+const yearOf = (season: string) => (season ? season.replace(/S\d$/, '') : 'none')
+const seasonOrder = (code: string) => {
+  const m = /^Y(\d+)(?:S(\d))?$/.exec(code)
+  return m ? Number(m[1]) * 10 + Number(m[2] ?? 0) : -1
+}
 
 /** A dropdown of checkboxes: nothing ticked shows everything, each tick narrows to what's ticked. */
 function Picker({ label, clear, options, picked, onChange }: { label: string; clear: string; options: [string, string, number][]; picked: Set<string>; onChange: (next: Set<string>) => void }) {
@@ -311,15 +307,11 @@ function Picker({ label, clear, options, picked, onChange }: { label: string; cl
     </details>
   )
 }
-const seasonOrder = (code: string) => {
-  const m = /^Y(\d+)S(\d)$/.exec(code)
-  return m ? Number(m[1]) * 10 + Number(m[2]) : -1
-}
 
 /**
- * One operator: pick uniforms and headgear from the game's own icons (Elite ones have the gold
- * background), weapon skins, sights and charms, then build a Blender pack: every pick becomes a
- * collection in one .blend. Skins and charms show a Blender preview of the real item.
+ * One operator: pick uniforms, headgear, weapon skins, sights and charms, then build a Blender pack: every
+ * pick becomes a collection in one .blend. Everything shows the game's own pictures; skins and charms come
+ * from the game's whole catalog, and the ones it hasn't downloaded yet are marked (they can't be exported).
  */
 function OperatorPack({
   operator,
@@ -352,6 +344,7 @@ function OperatorPack({
   const [query, setQuery] = useState('')
   const [years, setYears] = useState<Set<string>>(new Set())
   const [families, setFamilies] = useState<Set<string>>(new Set())
+  const [ranks, setRanks] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [blend, setBlend] = useState(operator.blend)
   const [folder, setFolder] = useState('')
@@ -367,77 +360,77 @@ function OperatorPack({
       .catch((e: Error) => setError(e.message))
   }, [operator.uid])
 
-  // weapons, sights and charms read the game's download cache: only once someone opens their tab
-  const cacheTab = tab === 'weapon' || tab === 'sight' || tab === 'charm'
+  // weapons, sights and charms: only once someone opens their tab
+  const catalogTab = tab === 'weapon' || tab === 'sight' || tab === 'charm'
   useEffect(() => {
-    if (!cacheTab || !indexed || weapons) return
+    if (!catalogTab || !indexed || weapons) return
     api.call<Weapon[]>('operators.weapons', { uid: operator.uid }).then(setWeapons).catch((e: Error) => setError(e.message))
-    api.call<Charm[]>('dcache.charms').then(setCharms).catch(() => setCharms([]))
-  }, [cacheTab, indexed])
+    api.call<Charm[]>('catalog.charms').then(setCharms).catch(() => setCharms([]))
+  }, [catalogTab, indexed])
 
-  // pictures of the open tab: the game's icons come back in batches; previews Blender hasn't made yet
-  // arrive one by one as events (it renders them once, the open tab first, then they're served from disk)
-  const wanted = useMemo((): Want[] => {
-    const icon = (id: string): Want => ({ key: id, id, method: 'operators.icons' })
-    if (tab === 'uniform' || tab === 'headgear') return (items?.[tab] ?? []).map((i) => icon(i.uid))
-    if (tab === 'sight') return (weapons ?? []).flatMap((w) => w.sights.map((s) => icon(s.uid)))
-    if (tab === 'charm') return (charms ?? []).map((c) => ({ key: `c:${c.id}`, id: c.id, method: 'operators.thumbs' }))
-    return (weapons ?? []).flatMap((w) =>
-      ['', ...w.skins.map((s) => s.id)].map((id): Want => ({ key: `w:${w.model}:${id}`, id, method: 'operators.thumbs', model: w.model, magazine: w.magazine }))
-    )
-  }, [tab, items, weapons, charms])
+  // what the filters let through: search, seasons (skins and charms), kind and rank (charms)
+  const q = query.toLowerCase()
+  const inSeasons = (season: string) => !years.size || years.has(yearOf(season))
+  const shownSkins = (w: Weapon) => w.skins.filter((s) => s.name.toLowerCase().includes(q) && inSeasons(s.season))
+  const shownCharms = (charms ?? []).filter(
+    (c) => c.name.toLowerCase().includes(q) && inSeasons(c.season) && (!families.size || families.has(c.family)) && (!ranks.size || ranks.has(c.rank))
+  )
+
+  const bySeason = useMemo(() => {
+    const by = new Map<string, Charm[]>()
+    shownCharms.forEach((c) => by.set(c.season, [...(by.get(c.season) ?? []), c]))
+    for (const list of by.values()) list.sort((a, b) => RANKS.indexOf(a.rank) - RANKS.indexOf(b.rank) || a.name.localeCompare(b.name))
+    return [...by.entries()].sort((a, b) => seasonOrder(b[0]) - seasonOrder(a[0]))
+  }, [charms, query, years, families, ranks])
+  const newestFirst = (a: Skin, b: Skin) => seasonOrder(b.season) - seasonOrder(a.season) || a.name.localeCompare(b.name)
+  // a weapon's skins as the page lists them: universal first, then its own, each newest first
+  const skinGroups = (w: Weapon): [string, Skin[]][] => {
+    const shown = shownSkins(w)
+    return [
+      ['pack.universal', shown.filter((s) => s.universal).sort(newestFirst)],
+      ['pack.exclusive', shown.filter((s) => !s.universal).sort(newestFirst)]
+    ]
+  }
+
+  // the game's pictures of what's on screen, in the page's order and in batches; decoded once, then served from disk
+  const wanted = useMemo((): string[] => {
+    if (tab === 'uniform' || tab === 'headgear') return (items?.[tab] ?? []).map((i) => i.uid)
+    if (tab === 'sight') return (weapons ?? []).flatMap((w) => w.sights.map((s) => s.uid))
+    if (tab === 'charm') return bySeason.flatMap(([, list]) => list.map((c) => c.icon)).filter(Boolean)
+    return (weapons ?? []).flatMap((w) => skinGroups(w).flatMap(([, list]) => list.map((s) => s.icon))).filter(Boolean)
+  }, [tab, items, weapons, bySeason, query, years])
   useEffect(() => {
     if (!indexed) return
     let alive = true
-    const groups = new Map<string, Want[]>()
-    for (const w of wanted.filter((w) => !(w.key in pics))) groups.set(`${w.method}|${w.model ?? ''}`, [...(groups.get(`${w.method}|${w.model ?? ''}`) ?? []), w])
+    const order = [...new Set(wanted)].filter((u) => !(u in pics))
     ;(async () => {
-      for (const list of groups.values()) {
-        const size = list[0].method === 'operators.icons' ? 24 : list.length
-        for (let i = 0; i < list.length && alive; i += size) {
-          const part = list.slice(i, i + size)
-          const { method, model, magazine } = part[0]
-          const icons = method === 'operators.icons'
-          const args = icons ? { uids: part.map((w) => w.id) } : { ids: part.map((w) => w.id), model: model ?? '', magazine: magazine ?? '' }
-          const got = await api.call<Record<string, string>>(method, args).catch(() => ({}) as Record<string, string>)
-          const done = part.filter((w) => icons || got[w.id]).map((w) => [w.key, got[w.id] ?? ''])
-          if (alive) setPics((all) => ({ ...all, ...Object.fromEntries(done) }))
-        }
+      for (let i = 0; i < order.length && alive; i += 32) {
+        const part = order.slice(i, i + 32)
+        const got = await api.call<Record<string, string>>('operators.icons', { uids: part }).catch(() => ({}) as Record<string, string>)
+        if (alive) setPics((all) => ({ ...all, ...Object.fromEntries(part.map((u) => [u, got[u] ?? ''])) }))
       }
     })()
     return () => {
       alive = false
     }
   }, [wanted, indexed])
-  useEngineEvent<{ id: string; model: string; uri: string }>('operators.preview', (e) =>
-    setPics((all) => ({ ...all, [e.model ? `w:${e.model}:${e.id}` : `c:${e.id}`]: e.uri }))
-  )
 
   const flip = (set: Set<string>, id: string) => {
     const next = new Set(set)
     next.has(id) ? next.delete(id) : next.add(id)
     return next
   }
-  const shownCharms = (charms ?? []).filter(
-    (c) =>
-      c.name.toLowerCase().includes(query.toLowerCase()) &&
-      (!years.size || years.has(yearOf(c))) &&
-      (!families.size || families.has(familyOf(c.name)))
-  )
-  const count = (test: (c: Charm) => boolean) => (charms ?? []).filter(test).length
-  const yearOptions = [...new Set((charms ?? []).map(yearOf))]
+  const seasonsHere = tab === 'charm' ? (charms ?? []).map((c) => c.season) : (weapons ?? []).flatMap((w) => w.skins.map((s) => s.season))
+  const yearOptions = [...new Set(seasonsHere.map(yearOf))]
     .sort((a, b) => (a === 'none' ? 1 : b === 'none' ? -1 : Number(b.slice(1)) - Number(a.slice(1))))
-    .map((y): [string, string, number] => [y, y === 'none' ? t('pack.noSeason') : t('pack.year', { y: y.slice(1) }), count((c) => yearOf(c) === y)])
-  const familyOptions = [...FAMILIES.map(([k]) => k), 'other'].map((k): [string, string, number] => [k, t(`pack.family.${k}`), count((c) => familyOf(c.name) === k)])
-  const seasons = useMemo(() => {
-    const by = new Map<string, Charm[]>()
-    shownCharms.forEach((c) => by.set(c.season, [...(by.get(c.season) ?? []), c]))
-    return [...by.entries()].sort((a, b) => seasonOrder(b[0]) - seasonOrder(a[0]))
-  }, [charms, query, years, families])
+    .map((y): [string, string, number] => [y, y === 'none' ? t('pack.noSeason') : t('pack.year', { y: y.slice(1) }), seasonsHere.filter((s) => yearOf(s) === y).length])
+  const familyOptions = FAMILIES.map((k): [string, string, number] => [k, t(`pack.family.${k}`), (charms ?? []).filter((c) => c.family === k).length])
+  const rankOptions = RANKS.map((k): [string, string, number] => [k, t(`rank.${k}`), (charms ?? []).filter((c) => c.rank === k).length])
+  // "select all" takes what can be exported: the items the game has downloaded
   const setAll = (on: boolean) => {
-    if (tab === 'weapon') return setSkins(on ? Object.fromEntries((weapons ?? []).map((w) => [w.uid, new Set(['', ...w.skins.map((s) => s.id)])])) : {})
+    if (tab === 'weapon') return setSkins(on ? Object.fromEntries((weapons ?? []).map((w) => [w.uid, new Set(['', ...shownSkins(w).filter((s) => s.file).map((s) => s.id)])])) : {})
     if (tab === 'sight') return setSights(on ? Object.fromEntries((weapons ?? []).map((w) => [w.uid, new Set(w.sights.map((s) => s.uid))])) : {})
-    if (tab === 'charm') return setCharmPicks(on ? new Set(shownCharms.map((c) => c.id)) : new Set())
+    if (tab === 'charm') return setCharmPicks(on ? new Set(shownCharms.filter((c) => c.file).map((c) => c.id)) : new Set())
     const next = new Set(picked)
     items?.[tab].forEach((i) => (on ? next.add(i.uid) : next.delete(i.uid)))
     setPicked(next)
@@ -462,7 +455,7 @@ function OperatorPack({
     setBusy(true)
     setError('')
     try {
-      const r = await api.call<{ folder: string; blend: string }>('operators.pack', {
+      const r = await api.call<{ folder: string; blend: string; skipped: number }>('operators.pack', {
         uid: operator.uid,
         items: [...picked],
         weapons: (weapons ?? [])
@@ -473,6 +466,7 @@ function OperatorPack({
       setFolder(r.folder)
       setBlend(r.blend)
       toast(t('pack.done', { name: operator.name }), 'ok')
+      if (r.skipped) toast(t('pack.skipped', { n: r.skipped }), 'muted')
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -483,20 +477,42 @@ function OperatorPack({
   const phase = progress?.step === 'blend' ? 'pack.blending' : progress?.step === 'cache' ? 'pack.cacheReading' : 'pack.exporting'
   const share = progress && progress.step !== 'done' ? (progress.done / Math.max(progress.total, 1)) * (progress.step === 'blend' ? 0.4 : 0.6) + (progress.step === 'blend' ? 0.6 : 0) : 0
 
-  /** A pickable card: its picture (a shimmer while it's made), a check when picked, the name under it. */
-  const card = (key: string, on: boolean, onClick: () => void, opts: { caption?: string; tag?: string; shape: 'icon' | 'wide' | 'square'; render?: boolean }) => (
-    <button key={key} className={`cosmetic ${opts.shape}${opts.render ? ' render' : ''}${on ? ' on' : ''}`} onClick={onClick} disabled={busy} title={opts.caption}>
-      <span className="pic">{pics[key] ? <img src={pics[key]} alt="" draggable={false} /> : key in pics ? <span className="cosmetic-none" /> : <span className="cosmetic-wait" />}</span>
+  /** A pickable card: the game's picture (a shimmer while it's decoded), a check when picked, the name under it.
+   * Items the game hasn't downloaded yet can't be picked: they say how to get them. */
+  const card = (
+    key: string,
+    pic: string,
+    on: boolean,
+    onClick: () => void,
+    opts: { caption?: string; sub?: string; tag?: string; rarity?: string; shape: 'icon' | 'skin' | 'wide' | 'square'; missing?: boolean }
+  ) => (
+    <button
+      key={key}
+      className={`cosmetic ${opts.shape}${on ? ' on' : ''}${opts.missing ? ' missing' : ''}`}
+      data-rarity={opts.rarity || undefined}
+      onClick={opts.missing ? () => toast(t('pack.notDownloaded'), 'muted') : onClick}
+      disabled={busy}
+      title={opts.missing ? t('pack.notDownloaded') : opts.caption}
+    >
+      <span className="pic">{pic && pics[pic] ? <img src={pics[pic]} alt="" draggable={false} /> : !pic || pic in pics ? <span className="cosmetic-none" /> : <span className="cosmetic-wait" />}</span>
       {opts.caption && <span className="cosmetic-caption">{opts.caption}</span>}
+      {opts.sub && <span className="cosmetic-sub">{opts.sub}</span>}
       {on && (
         <em className="cosmetic-check">
           <Check size={12} strokeWidth={3} />
         </em>
       )}
       {opts.tag && <span className="cosmetic-tag">{opts.tag}</span>}
+      {opts.missing && (
+        <span className="cosmetic-cloud">
+          <CloudDownload size={13} /> {t('pack.toDownload')}
+        </span>
+      )}
     </button>
   )
   const weaponTitle = (w: Weapon, n: number) => w.name || w.code || t('pack.weaponUnknown', { n: n + 1 })
+  const seasonLabel = (code: string) =>
+    code.includes('S') ? t('pack.season', { y: code.slice(1, code.indexOf('S')), s: code.slice(code.indexOf('S') + 1) }) : t('pack.year', { y: code.slice(1) })
   const loading = (
     <div className="center column">
       <Spinner size={22} />
@@ -521,12 +537,18 @@ function OperatorPack({
         <div className="card pack-summary">
           <div className="label">{t('pack.title')}</div>
           <p>{t('pack.hint')}</p>
+          {/* what's in the pack so far; a row opens its tab */}
           <div className="pack-counts">
-            {TABS.map((k) => (
-              <span key={k}>
-                <b>{counts[k]}</b> {t(`pack.${k}s`)}
-              </span>
-            ))}
+            {TABS.map((k) => {
+              const Icon = TAB_ICONS[k]
+              return (
+                <button key={k} className={`pack-count${tab === k ? ' on' : ''}${counts[k] ? ' has' : ''}`} onClick={() => setTab(k)}>
+                  <Icon size={16} strokeWidth={1.8} />
+                  <span>{t(`pack.${k}s`)}</span>
+                  <b>{counts[k]}</b>
+                </button>
+              )
+            })}
           </div>
           {busy ? (
             <div className="index-progress">
@@ -567,16 +589,19 @@ function OperatorPack({
           <div className="cosmetics-head">
             <Segmented value={tab} onChange={setTab} options={TABS.map((k): [Tab, string] => [k, `${t(`pack.${k}s`)} · ${total[k] ?? '…'}`])} />
             <div className="row">
-              {tab === 'charm' && (
+              {(tab === 'weapon' || tab === 'charm') && (
                 <label className="search small">
                   <Search size={14} />
-                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('pack.searchCharms')} />
+                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t(tab === 'charm' ? 'pack.searchCharms' : 'pack.searchSkins')} />
                 </label>
+              )}
+              {((tab === 'weapon' && weapons) || (tab === 'charm' && charms)) && (
+                <Picker label={t('pack.seasons')} clear={t('pack.none')} options={yearOptions} picked={years} onChange={setYears} />
               )}
               {tab === 'charm' && charms && (
                 <>
-                  <Picker label={t('pack.seasons')} clear={t('pack.none')} options={yearOptions} picked={years} onChange={setYears} />
                   <Picker label={t('pack.kinds')} clear={t('pack.none')} options={familyOptions} picked={families} onChange={setFamilies} />
+                  <Picker label={t('pack.ranks')} clear={t('pack.none')} options={rankOptions} picked={ranks} onChange={setRanks} />
                 </>
               )}
               <button className="btn ghost small" onClick={() => setAll(true)} disabled={busy}>
@@ -595,7 +620,13 @@ function OperatorPack({
             ) : (
               <div className="cosmetic-grid" key={tab}>
                 {items[tab].map((item) =>
-                  card(item.uid, picked.has(item.uid), () => setPicked(flip(picked, item.uid)), { shape: 'icon', tag: item.default ? t('pack.default') : undefined })
+                  card(item.uid, item.uid, picked.has(item.uid), () => setPicked(flip(picked, item.uid)), {
+                    shape: 'icon',
+                    caption: item.label || undefined,
+                    sub: item.season || undefined,
+                    rarity: item.rarity,
+                    tag: item.default ? t('pack.default') : undefined
+                  })
                 )}
               </div>
             ))}
@@ -608,18 +639,16 @@ function OperatorPack({
                 {weapons.map((w, n) => {
                   const on = skins[w.uid] ?? new Set<string>()
                   const pick = (id: string) => setSkins({ ...skins, [w.uid]: flip(on, id) })
-                  const skinCard = (s: Skin) => card(`w:${w.model}:${s.id}`, on.has(s.id), () => pick(s.id), { caption: s.name, shape: 'wide', render: true })
-                  const groups: [string, Skin[]][] = [
-                    ['pack.universal', w.skins.filter((s) => s.universal)],
-                    ['pack.exclusive', w.skins.filter((s) => !s.universal)]
-                  ]
+                  const skinCard = (s: Skin) =>
+                    card(s.id, s.icon, on.has(s.id), () => pick(s.id), { caption: s.name, sub: s.season, rarity: s.rarity, shape: 'skin', missing: !s.file })
+                  const groups = skinGroups(w)
                   return (
                     <section key={w.uid} className="weapon-block">
                       <header>
                         <b>{weaponTitle(w, n)}</b>
-                        <small>{w.skins.length ? t('pack.skinsCount', { n: w.skins.length }) : t('pack.noSkins')}</small>
+                        <small>{w.skins.length ? t('pack.skinsCount', { n: w.skins.length, ready: w.skins.filter((s) => s.file).length }) : t('pack.noSkins')}</small>
                       </header>
-                      <div className="skin-grid">{card(`w:${w.model}:`, on.has(''), () => pick(''), { caption: t('pack.noSkin'), shape: 'wide', render: true })}</div>
+                      <div className="skin-grid">{card(`${w.uid}:base`, '', on.has(''), () => pick(''), { caption: t('pack.noSkin'), shape: 'skin' })}</div>
                       {groups.map(
                         ([label, list]) =>
                           list.length > 0 && (
@@ -654,10 +683,9 @@ function OperatorPack({
                         </header>
                         <div className="skin-grid">
                           {w.sights.map((s, i) =>
-                            card(s.uid, on.has(s.uid), () => setSights({ ...sights, [w.uid]: flip(on, s.uid) }), {
+                            card(s.uid, s.uid, on.has(s.uid), () => setSights({ ...sights, [w.uid]: flip(on, s.uid) }), {
                               caption: s.name || `${t('pack.sights')} ${i + 1}`,
-                              shape: 'wide',
-                              render: true
+                              shape: 'wide'
                             })
                           )}
                         </div>
@@ -673,12 +701,12 @@ function OperatorPack({
               loading
             ) : (
               <div className="cosmetic-grid scroll-sections" key={tab}>
-                {seasons.map(([code, list]) => (
+                {bySeason.map(([code, list]) => (
                   <section key={code || 'other'} className="pack-group">
                     <h3 className="group-head">
                       {code ? (
                         <>
-                          <span className="season-code">{code}</span> {t('pack.season', { y: code.slice(1, code.indexOf('S')), s: code.slice(code.indexOf('S') + 1) })}
+                          <span className="season-code">{code}</span> {seasonLabel(code)}
                         </>
                       ) : (
                         t('pack.otherSeason')
@@ -686,7 +714,15 @@ function OperatorPack({
                       <small>{list.length}</small>
                     </h3>
                     <div className="charm-grid">
-                      {list.map((c) => card(`c:${c.id}`, charmPicks.has(c.id), () => setCharmPicks(flip(charmPicks, c.id)), { caption: c.name, shape: 'square', render: true }))}
+                      {list.map((c) =>
+                        card(c.id, c.icon, charmPicks.has(c.id), () => setCharmPicks(flip(charmPicks, c.id)), {
+                          caption: c.name,
+                          sub: c.rank ? t(`rank.${c.rank}`) : undefined,
+                          rarity: c.rarity,
+                          shape: 'square',
+                          missing: !c.file
+                        })
+                      )}
                     </div>
                   </section>
                 ))}

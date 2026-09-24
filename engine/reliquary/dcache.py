@@ -26,7 +26,7 @@ from pathlib import Path
 import zstandard
 
 from . import operators, settings  # noqa: F401  (operators puts the vendored R6-parser on the path)
-from .rpc import emit, method
+from .rpc import emit
 
 MAGIC = bytes.fromhex("34aafb5799fa1410")
 PRESETS = ("Preset3_Ultra", "Preset2_High", "Preset1_Medium", "Preset0_Low")
@@ -148,14 +148,14 @@ def _open(file: str) -> tuple[dict, bytes]:
     return parsed
 
 
-def _texture_png(doc: dict, binary: bytes, tex: dict, path: Path, low: bool = False, tile: int = 1) -> None:
-    """The best preset of a texture (the smallest with low: previews) as PNG, BCn through R6-parser's decoder.
+def _texture_png(doc: dict, binary: bytes, tex: dict, path: Path, tile: int = 1) -> None:
+    """The best preset of a texture as PNG, BCn through R6-parser's decoder.
     tile: repeat it n x n, the way the game lays a camo pattern over the weapon's UVs."""
     from PIL import Image
     from src import texture
 
     extras = tex["extras"]
-    preset = next(extras[p] for p in (PRESETS[::-1] if low else PRESETS) if p in extras)
+    preset = next(extras[p] for p in PRESETS if p in extras)
     info, fmt = preset["CompiledTextureMapData"], preset["PixelFormat"]
     width, height = max(1, info["Width"] >> info["MipStart"]), max(1, info["Height"] >> info["MipStart"])
     if fmt not in texture.FORMATS:
@@ -176,7 +176,7 @@ def _texture_png(doc: dict, binary: bytes, tex: dict, path: Path, low: bool = Fa
     image.save(path)
 
 
-def textures(file: str, out: Path, low: bool = False) -> dict[str, str]:
+def textures(file: str, out: Path) -> dict[str, str]:
     """Diffuse, normal and specular of a cache document, saved as PNG next to where the glTF will be.
     A camo pattern is its diffuse alone, repeated as often as its material says (CamoTilingU, 4 so far)."""
     doc, binary = _open(file)
@@ -189,12 +189,12 @@ def textures(file: str, out: Path, low: bool = False) -> dict[str, str]:
         name = tex.get("name", "")
         role = next((r.lower() for r in ("Diffuse", "Normal", "Specular") if r in name), None)
         if role and role not in roles:
-            _texture_png(doc, binary, tex, out / f"{name}.png", low, tile)
+            _texture_png(doc, binary, tex, out / f"{name}.png", tile)
             roles[role] = f"{name}.png"
     return roles
 
 
-def charm_gltf(file: str, out: Path, low: bool = False) -> Path:
+def charm_gltf(file: str, out: Path) -> Path:
     """A charm as a standard glTF: its CompiledMesh through R6-parser's mesh reader and writer."""
     from src.gltf import write_gltf
     from src.mesh import read_mesh_with_islands
@@ -214,46 +214,5 @@ def charm_gltf(file: str, out: Path, low: bool = False) -> Path:
         kept = [i for i in islands if (slots[i.material_id] if i.material_id < len(slots) else -1) not in effects]
         islands = kept or islands
         parts.append(MeshPart(uid=number, vertices=verts, uvs=uvs, normals=normals, islands=islands, tangents=tuple(tangents)))
-    roles = textures(file, out, low)
+    roles = textures(file, out)
     return write_gltf(0xC4A12, parts, out, **roles)
-
-
-def thumbnail(file: str, path: Path, size: int = 176) -> None:
-    """A small JPEG of a document's diffuse texture (the lowest preset is enough)."""
-    from PIL import Image
-    from src import texture
-
-    doc, binary = _open(file)
-    tex = next(t for t in doc["textures"] if "Diffuse" in t.get("name", ""))
-    extras = tex["extras"]
-    preset = next(extras[p] for p in reversed(PRESETS) if p in extras)
-    info, fmt = preset["CompiledTextureMapData"], preset["PixelFormat"]
-    width, height = max(1, info["Width"] >> info["MipStart"]), max(1, info["Height"] >> info["MipStart"])
-    dxgi, block = texture.FORMATS[fmt]
-    top = ((width + 3) // 4) * ((height + 3) // 4) * block
-    with Image.open(io.BytesIO(texture._dds_dx10(width, height, _view(doc, binary, preset["PlatformCompiledData"])[:top], dxgi))) as source:
-        image = source.convert("RGB")
-    image.thumbnail((size, size))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    image.save(path, quality=86)
-
-
-SEASON = re.compile(r"(?<![A-Za-z0-9])Y(\d{1,2})S(\d)(?![0-9])", re.I)
-
-
-def season(material: str) -> str:
-    """The season code in an item's name (W_Charm_Y8S2_CaptainLaserhawk → Y8S2), or ""."""
-    found = SEASON.search(material.replace("_", " "))
-    return f"Y{int(found[1])}S{found[2]}" if found else ""
-
-
-@method("dcache.charms")
-def charms() -> list[dict]:
-    """The charms the game has downloaded, by name, with the season they came out in when the name says it."""
-    seen, out = set(), []
-    for entry in catalog():
-        if entry["kind"] == "charm" and entry["material"] not in seen:
-            seen.add(entry["material"])
-            name = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", SEASON.sub("", entry["name"]).strip())  # CaptainLaserhawk → Captain Laserhawk
-            out.append({"id": entry["file"], "name": name or entry["name"], "season": season(entry["material"])})
-    return sorted(out, key=lambda c: c["name"].lower())

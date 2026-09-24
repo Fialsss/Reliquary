@@ -12,7 +12,6 @@ its UI record (label and icon) at +53.
 """
 from __future__ import annotations
 
-import base64
 import functools
 import io
 import json
@@ -132,24 +131,61 @@ def list_operators() -> list[dict]:
                    for o in _roster()), key=lambda o: o["name"])
 
 
+def _prepared_path() -> Path:
+    return settings.HOME / "prepared.json"
+
+
+@functools.lru_cache(maxsize=1)
+def _read_prepared(path: str, modified: int) -> dict:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def _prepared() -> dict:
+    """What `operators.index` got ready: {"signature", "game", "weapons": {operator uid: weapons}, "charms"}."""
+    path = _prepared_path()
+    try:
+        return _read_prepared(str(path), path.stat().st_mtime_ns)
+    except (OSError, ValueError):
+        return {}
+
+
+def _signature() -> str:
+    """What the prepared data comes from: the game build, its shop list and its downloads."""
+    from . import catalog, dcache
+
+    files = (_game() / "datapc64.forge", catalog._path())
+    cache = dcache.cache_root()
+    return ":".join(str(f.stat().st_mtime_ns) if f.is_file() else "0" for f in files) + ":" + (dcache._signature(cache) if cache.is_dir() else "")
+
+
 @method("operators.status")
 def status() -> dict:
-    database = _database()
-    return {"indexed": database.is_file(), "bytes": database.stat().st_size if database.is_file() else 0,
+    """indexed: everything is ready (the pages open at once); stale: the game changed since, run the index again."""
+    database, prepared = _database(), _prepared()
+    try:
+        stale = bool(prepared) and prepared.get("signature") != _signature()
+    except (Failure, OSError):
+        stale = False
+    return {"indexed": database.is_file() and bool(prepared), "stale": stale,
+            "bytes": database.stat().st_size if database.is_file() else 0,
             "exports": settings.load()["exports"], "busy": _busy.locked()}
 
 
 @method("operators.index")
 def build_index() -> dict:
-    """Index every archive of the game (only the changed ones on later runs): a few minutes the first time."""
+    """Get everything ready at once, under one progress bar: index the game's archives (only the changed ones on
+    later runs), read its downloads, list every operator's weapons with their skins and every charm, then decode
+    every picture to disk. After that nothing loads piece by piece. The first run takes several minutes; after a
+    game update or new downloads it runs again and only does what's new."""
     from src.database import index_archive
+    from . import catalog, dcache
 
     game = _game()
     if not _busy.acquire(blocking=False):
         raise Failure("error.opBusy")
     try:
+        signature, build, failed = _signature(), (game / "datapc64.forge").stat().st_mtime_ns, []
         archives = sorted(game.glob("*.forge"))
-        failed = []
         for done, archive in enumerate(archives):
             emit("operators.progress", {"step": "index", "done": done, "total": len(archives), "file": archive.name})
             try:
@@ -157,10 +193,66 @@ def build_index() -> dict:
             except Exception as error:  # one unreadable archive shouldn't cost the whole index
                 print(f"Index failed for {archive.name}: {error}", file=sys.stderr)
                 failed.append(archive.name)
-        emit("operators.progress", {"step": "index", "done": len(archives), "total": len(archives), "file": ""})
+        cached = dcache.catalog()  # read once for every operator below
+        roster, arsenal, wanted = list_operators(), {}, []
+        for done, operator in enumerate(roster):
+            emit("operators.progress", {"step": "data", "done": done, "total": len(roster), "file": operator["name"]})
+            wanted += [operator["uid"], f"{operator['uid']}.emblem"]
+            try:
+                arsenal[operator["uid"]] = _weapons(operator["uid"], cached)
+                everything = cosmetics(operator["uid"])
+            except Exception as error:  # one unreadable operator shouldn't cost the whole run: its page works it out live
+                print(f"Prepare skipped {operator['name']}: {error}", file=sys.stderr)
+                arsenal.pop(operator["uid"], None)
+                continue
+            wanted += [i["uid"] for kind in ("uniform", "headgear") for i in everything[kind]]
+        try:
+            all_charms = catalog.find_charms(cached)
+        except Exception as error:  # the Charms tab works them out live
+            print(f"Prepare skipped the charms: {error}", file=sys.stderr)
+            all_charms = []
+        wanted += [s["uid"] for ws in arsenal.values() for w in ws for s in w["sights"]] + [c["icon"] for c in all_charms]
+        wanted += [s["icon"] for ws in arsenal.values() for w in ws for s in w["skins"]]
+        if _prepared().get("game") != build:  # a new build can have pictures the old one lacked: try those again
+            for empty in (settings.HOME / "pictures2").glob("*.webp"):
+                if not empty.stat().st_size:
+                    empty.unlink()
+        _decode_all([u for u in wanted if u], mark=not failed)
+        _prepared_path().write_text(json.dumps({"signature": signature, "game": build, "weapons": arsenal, "charms": all_charms}), encoding="utf-8")
     finally:
         _busy.release()
     return {**status(), "failed": failed}
+
+
+def _decode_all(uids: list[str], mark: bool = True) -> None:
+    """Every picture not on disk yet, several at a time (decoding is mostly native code, so threads help): a WebP
+    each, and an empty file for the ones the game has no picture for (mark: the index is whole, so that's
+    certain), so no page waits for those later. Anything else is left for the next run to try again."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    records, folder = _records(), settings.HOME / "pictures2"
+    _more_records()  # read once here, not by every thread at the same time
+    folder.mkdir(parents=True, exist_ok=True)
+    todo = [u for u in dict.fromkeys(uids) if not (folder / f"{u}.webp").is_file()]
+
+    def decode(text: str) -> None:
+        uid, _, variant = text.partition(".")
+        path = folder / f"{text}.webp"
+        try:
+            _make_icon(int(uid, 16), records, path, variant == "emblem")
+        except (ValueError, KeyError, StopIteration, struct.error) as error:  # the game's records lead to no picture
+            print(f"No picture for {text}: {error}", file=sys.stderr)
+            if mark:
+                path.write_bytes(b"")
+        except Exception as error:  # a file busy or gone: one picture shouldn't cost the whole run
+            print(f"Picture {text} failed: {error}", file=sys.stderr)
+
+    # ponytail: threads share the GIL (about 3x on 16 cores); a process pool if the first run must get shorter
+    with ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 4)) as pool:
+        for done, _ in enumerate(pool.map(decode, todo)):
+            if done % 40 == 0:
+                emit("operators.progress", {"step": "pictures", "done": done, "total": len(todo), "file": ""})
+    emit("operators.progress", {"step": "pictures", "done": len(todo), "total": len(todo), "file": ""})
 
 
 # ------------------------------------------------------------- cosmetics
@@ -314,27 +406,11 @@ def _make_icon(uid: int, records: dict, path: Path, emblem: bool = False) -> Non
         image = image.crop((max(0, left - pad), max(0, top - pad), min(image.width, right + pad), min(image.height, bottom + pad)))
     image.thumbnail(ICON_BOX)
     path.parent.mkdir(parents=True, exist_ok=True)
-    image.save(path, quality=88)
+    part = path.with_name(path.name + ".part")  # whole or not at all: an empty .webp means "no picture"
+    image.save(part, format="WEBP", quality=88)
+    os.replace(part, path)
 
 
-@method("operators.icons")
-def icons(uids: list[str]) -> dict[str, str]:
-    """The game's own pictures of operators (portraits; "<uid>.emblem" for their badge), uniforms, headgear,
-    sights, weapon skins (their definition's preview) and charms, as data URIs, decoded once and kept on disk."""
-    if not _database().is_file():
-        return {}
-    records, folder, out = _records(), settings.HOME / "pictures2", {}  # 2: previews trimmed to their item
-    for text in uids:
-        path = folder / f"{text}.webp"
-        if not path.is_file():
-            try:
-                uid, _, variant = text.partition(".")
-                _make_icon(int(uid, 16), records, path, variant == "emblem")
-            except (ValueError, KeyError, OSError, StopIteration, struct.error) as error:
-                print(f"No icon for {text}: {error}", file=sys.stderr)
-                continue
-        out[text] = "data:image/webp;base64," + base64.b64encode(path.read_bytes()).decode()
-    return out
 
 
 # ------------------------------------------------------------------ packs
@@ -601,20 +677,58 @@ def _add_magazine(folder: Path, magazine: str, roles: dict) -> None:
         gltf.write_text(json.dumps(doc), encoding="utf-8")
 
 
+INSTALLED = "game:"  # a skin's or charm's `file` when the game installed it (datapc64_mtx…), not the download cache
+
+
+def _installed_textures(skin: str, folder: Path) -> dict[str, str]:
+    """Diffuse, normal and specular of a skin the game installed: its material or model, through its bundle's own
+    dependency graph (the game's graph doesn't list them), saved as PNG in `folder`."""
+    from src.cli import _load_database_model_index
+    from src.database import load_asset_index
+    from src.model import decode_model_textures, resolve_texture_uids
+
+    uid = int(skin[len(INSTALLED):], 16)
+    record = load_asset_index(_database(), {uid}).primary(uid)
+    if record is None:
+        raise ValueError(f"skin {skin} isn't in the asset index")
+    graph = record.archive.with_suffix(".depgraphbin")
+    children = _read_children(str(graph), graph.stat().st_mtime_ns) if graph.is_file() else _children()
+    index = _load_database_model_index(_database(), uid, children)
+    folder.mkdir(parents=True, exist_ok=True)
+    _, diffuse, normal, specular = decode_model_textures(resolve_texture_uids(uid, children, index), index, folder)
+    if not diffuse:
+        raise ValueError(f"skin {skin} has no colour texture")
+    if not normal:
+        # ponytail: a colour texture alone is a camo pattern (Holiday 3…), repeated 4x4 like the cache's
+        # (CamoTilingU, 4 so far); read the material's own tiling if a pattern ever needs another count
+        from PIL import Image
+        from . import dcache
+
+        with Image.open(folder / diffuse) as image:
+            dcache.repeat(image.convert("RGBA"), 4).save(folder / diffuse)
+    return {role: name for role, name in (("diffuse", diffuse), ("normal", normal), ("specular", specular)) if name}
+
+
 def _weapon_gltf(model: str, magazine: str, skin: str, folder: Path) -> None:
-    """A weapon as glTF: its installed mesh and magazine, in a skin from the download cache ("" = none)."""
+    """A weapon as glTF: its installed mesh and magazine, in a skin from the download cache or the game ("" = none)."""
     from src.gltf import write_gltf
     from . import dcache
 
-    roles = dcache.textures(skin, folder) if skin else {}
+    roles = (_installed_textures(skin, folder) if skin.startswith(INSTALLED) else dcache.textures(skin, folder)) if skin else {}
     write_gltf(int(model, 16), _weapon_parts(model), folder, **roles)
     _add_magazine(folder, magazine, roles)
 
 
 @method("operators.weapons")
 def weapons(uid: str) -> list[dict]:
+    """The operator's weapons, as `operators.index` got them ready; worked out now when it hasn't."""
+    return _prepared().get("weapons", {}).get(uid) or _weapons(uid)
+
+
+def _weapons(uid: str, cached: list[dict] | None = None) -> list[dict]:
     """The operator's weapons (loadout slots), each with every skin the game has for it (the catalog), `file` on
-    the ones the game has downloaded."""
+    the ones that can be exported (downloaded by the game, or installed with it). cached: the download cache's
+    documents, when the caller has read them already."""
     from src.model import load_asset_payload, read_mesh_bindings
     from . import catalog, dcache
 
@@ -622,7 +736,7 @@ def weapons(uid: str) -> list[dict]:
     if not operator or not _database().is_file():
         return []
     records = _more_records()
-    skins = [e for e in dcache.catalog() if e["kind"] == "skin"]
+    skins = [e for e in (dcache.catalog() if cached is None else cached) if e["kind"] == "skin"]
     data = operator[0].data
     base = 8 + struct.unpack_from("<I", data, 4)[0] * 8
     out, seen = [], set()
@@ -708,7 +822,8 @@ def pack(uid: str, items: list[str], weapons: list[dict] | None = None, charms: 
     skipped += len(charms or []) - len(ready)
     for column, charm in enumerate(ready):
         folder = target / "charms" / _folder_name(charm["name"])[:40]
-        jobs.append(("charm", folder, charm["file"]))
+        file = charm["file"]
+        jobs.append(("model", folder, int(file[len(INSTALLED):], 16)) if file.startswith(INSTALLED) else ("charm", folder, file))
         manifest["items"].append({"kind": "charm", "name": charm["name"], "folder": str(folder),
                                   "offset": [2.4 + (column % 6) * 0.12, 0.0, 1.3 - (column // 6) * 0.15]})
     if not _busy.acquire(blocking=False):

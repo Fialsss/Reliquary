@@ -1,6 +1,12 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
+import { statSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { Engine } from './engine'
+
+// pic://p/<uid>.webp: the pictures Prepare decoded to disk (the engine's home is userData), straight into <img>
+protocol.registerSchemesAsPrivileged([{ scheme: 'pic', privileges: { standard: true, secure: true } }])
+const PICTURE = /^[0-9A-F]{16}(\.emblem)?\.webp$/i
 
 let window: BrowserWindow | undefined
 let closing = false
@@ -120,6 +126,15 @@ ipcMain.on('window', async (_event, action: 'minimize' | 'maximize' | 'close') =
   }
 })
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  protocol.handle('pic', (request) => {
+    const name = new URL(request.url).pathname.slice(1)
+    const file = join(app.getPath('userData'), 'pictures2', name)
+    // an empty file: Prepare found no picture for that item
+    if (!PICTURE.test(name) || !statSync(file, { throwIfNoEntry: false })?.size) return new Response(null, { status: 404 })
+    return net.fetch(pathToFileURL(file).toString())
+  })
+  createWindow()
+})
 app.on('window-all-closed', () => app.quit())
 app.on('before-quit', () => engine.stop())

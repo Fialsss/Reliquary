@@ -8,10 +8,20 @@ import { useSession } from '../session'
 import { PageHead, Segmented, Spinner } from '../ui'
 
 type Read = { state: 'waiting' | 'reading' | 'ok' | 'outdated' | 'failed'; operators?: Operator[]; error?: string }
-type Index = { indexed: boolean; bytes: number; exports: string; busy: boolean }
-type Progress = { step: 'index' | 'cache' | 'export' | 'blend' | 'done'; uid?: string; done: number; total: number; file: string }
+type Index = { indexed: boolean; stale: boolean; bytes: number; exports: string; busy: boolean }
+type Progress = { step: 'index' | 'cache' | 'data' | 'pictures' | 'export' | 'blend' | 'done'; uid?: string; done: number; total: number; file: string }
+// the steps of Prepare as parts of one bar: the pictures are most of the first run
+const PREPARE: Record<string, [number, number]> = { index: [0, 0.15], cache: [0.15, 0.25], data: [0.25, 0.35], pictures: [0.35, 1] }
 type Cosmetic = { uid: string; kind: 'uniform' | 'headgear'; default: boolean; label: string; season: string; rarity: string }
 type Cosmetics = { uniform: Cosmetic[]; headgear: Cosmetic[] }
+// Prepare outlives the page: leaving and coming back finds it still running. generation goes up when it finishes,
+// so pictures that weren't on disk before (a refresh adding new items) are asked for again
+let preparing: Promise<Index> | null = null
+let generation = 0
+// the game's pictures, decoded by Prepare and served from disk by the main process (see src/main: pic://)
+const picture = (uid: string) => `pic://p/${uid}.webp?${generation}`
+// an item Prepare found no picture for: the card keeps its backdrop
+const hide = (e: React.SyntheticEvent<HTMLImageElement>) => (e.currentTarget.style.display = 'none')
 
 /**
  * The roster comes straight from the installed game: find the game, decompress
@@ -28,7 +38,6 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
   const [open, setOpen] = useState<Operator | null>(null)
   const [query, setQuery] = useState('')
   const [side, setSide] = useState<Side>('all')
-  const [portraits, setPortraits] = useState<Record<string, string>>({})
   const gameOk = !!status?.game.ok
   const oodleOk = !!status?.oodle.ok
 
@@ -48,23 +57,8 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
   }, [gameOk, oodleOk])
   useEngineEvent<Progress>('operators.progress', setProgress)
 
-  // the game's own portraits, once the roster and the index are there
+  // the game's own portraits and every other picture: on disk once Prepare has run
   const indexed = !!index?.indexed
-  useEffect(() => {
-    const order = (read.operators ?? []).flatMap((o) => [o.uid, `${o.uid}.emblem`]).filter((u) => !(u in portraits))
-    if (!indexed || !order.length) return
-    let alive = true
-    ;(async () => {
-      for (let i = 0; i < order.length && alive; i += 24) {
-        const part = order.slice(i, i + 24)
-        const batch = await api.call<Record<string, string>>('operators.icons', { uids: part }).catch(() => ({}) as Record<string, string>)
-        if (alive) setPortraits((all) => ({ ...all, ...Object.fromEntries(part.map((u) => [u, batch[u] ?? ''])) }))
-      }
-    })()
-    return () => {
-      alive = false
-    }
-  }, [read.operators, indexed])
 
   const pickOodle = async () => {
     const dll = await api.pick('file', ['dll'])
@@ -72,26 +66,61 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
     await api.call('settings.set', { oodle: dll })
     refresh()
   }
+  const alive = useRef(true)
+  useEffect(() => {
+    alive.current = true
+    return () => void (alive.current = false)
+  }, [])
   const buildIndex = async () => {
     setIndexing(true)
     try {
-      setIndex(await api.call<Index>('operators.index'))
+      preparing ??= api
+        .call<Index>('operators.index')
+        .then((ready) => (generation++, ready))
+        .finally(() => (preparing = null))
+      const ready = await preparing
+      if (!alive.current) return
+      setIndex(ready)
       toast(t('op.indexDone'), 'ok')
     } catch (e) {
-      toast(t((e as Error).message), 'bad')
+      if (alive.current) toast(t((e as Error).message), 'bad')
     } finally {
-      setIndexing(false)
-      setProgress(null)
+      if (alive.current) {
+        setIndexing(false)
+        setProgress(null)
+      }
     }
+  }
+  // back on the page while Prepare runs: show it again
+  useEffect(() => {
+    if (preparing) buildIndex()
+  }, [])
+  // the game changed since (an update, new downloads): get ready again by itself, showing what's there meanwhile
+  useEffect(() => {
+    if (index?.stale && !index.busy && !indexing && gameOk && oodleOk) buildIndex()
+  }, [index?.stale, gameOk, oodleOk])
+
+  // Prepare as one bar, like a download: which step, how far and, in the long last step, the time left
+  const pace = useRef<{ step: string; at: number; done: number } | null>(null)
+  const range = progress ? PREPARE[progress.step] : undefined
+  let prepLabel = '…'
+  let prepShare = 0
+  if (progress && range) {
+    if (pace.current?.step !== progress.step) pace.current = { step: progress.step, at: Date.now(), done: progress.done }
+    const elapsed = Date.now() - pace.current.at
+    const rate = (progress.done - pace.current.done) / Math.max(1, elapsed)
+    const left = progress.step === 'pictures' && rate > 0 && elapsed > 3000 ? (progress.total - progress.done) / rate : 0
+    prepShare = range[0] + (range[1] - range[0]) * (progress.done / Math.max(progress.total, 1))
+    prepLabel = `${t(`op.step.${progress.step}`)} · ${t('op.indexing', { done: progress.done.toLocaleString(), total: progress.total.toLocaleString() })}`
+    if (left) prepLabel += ` · ${left > 60000 ? t('op.eta', { n: Math.round(left / 60000) }) : t('op.etaSoon')}`
   }
 
   if (open) {
     return (
       <OperatorPack
         operator={open}
-        portrait={portraits[open.uid]}
-        emblem={portraits[`${open.uid}.emblem`]}
-        indexed={!!index?.indexed}
+        indexed={indexed}
+        preparing={indexing}
         blenderOk={!!status?.blender.ok}
         progress={progress?.uid === open.uid || progress?.step === 'cache' ? progress : null}
         back={() => {
@@ -119,7 +148,7 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
       icon: Database,
       ok: indexOk,
       busy: indexing,
-      detail: indexing ? t('op.indexing', { done: progress?.done ?? 0, total: progress?.total ?? '…' }) : indexOk ? bytes(index!.bytes) : t('pipe.indexMissing')
+      detail: indexing ? `${Math.round(prepShare * 100)}%` : indexOk ? bytes(index!.bytes) : t('pipe.indexMissing')
     }
   ]
   const all = read.operators ?? []
@@ -130,9 +159,10 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
   const opCard = (o: Operator, i: number) => (
     <button key={o.uid} className={`op ${o.side}`} style={{ '--i': Math.min(i, 16) } as React.CSSProperties} onClick={() => setOpen(o)}>
       <span className="op-pic">
-        {portraits[o.uid] ? <img src={portraits[o.uid]} alt="" draggable={false} /> : <span className="op-initials">{o.name.slice(0, 2).toUpperCase()}</span>}
+        <span className="op-initials">{o.name.slice(0, 2).toUpperCase()}</span>
+        {indexed && <img src={picture(o.uid)} alt="" draggable={false} onError={hide} />}
       </span>
-      {portraits[`${o.uid}.emblem`] && <img className="op-emblem" src={portraits[`${o.uid}.emblem`]} alt="" draggable={false} />}
+      {indexed && <img className="op-emblem" src={picture(`${o.uid}.emblem`)} alt="" draggable={false} onError={hide} />}
       {o.blend && (
         <em className="op-done" aria-label={t('pack.ready')}>
           <Check size={12} strokeWidth={3} />
@@ -212,16 +242,16 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
           </details>
         </div>
       )}
-      {read.state === 'ok' && index && !index.indexed && (
+      {read.state === 'ok' && index && (!index.indexed || indexing) && (
         <div className="card explain index-card">
-          <b>{t('op.indexTitle')}</b>
-          <p>{t('op.indexBody')}</p>
+          <b>{t(index.indexed ? 'op.refreshTitle' : 'op.indexTitle')}</b>
+          {!index.indexed && <p>{t('op.indexBody')}</p>}
           {indexing ? (
             <div className="index-progress">
               <div className="bar">
-                <i style={{ width: `${progress ? (progress.done / Math.max(progress.total, 1)) * 100 : 0}%` }} />
+                <i style={{ width: `${Math.max(1, prepShare * 100)}%` }} />
               </div>
-              <small className="mono">{progress?.file || '…'}</small>
+              <small>{prepLabel}</small>
             </div>
           ) : (
             <button className="btn primary small" onClick={buildIndex}>
@@ -315,17 +345,15 @@ function Picker({ label, clear, options, picked, onChange }: { label: string; cl
  */
 function OperatorPack({
   operator,
-  portrait,
-  emblem,
   indexed,
+  preparing,
   blenderOk,
   progress,
   back
 }: {
   operator: Operator
-  portrait?: string
-  emblem?: string
   indexed: boolean
+  preparing: boolean // Prepare is refreshing: it holds the engine, so packs wait for it
   blenderOk: boolean
   progress: Progress | null
   back: () => void
@@ -335,7 +363,6 @@ function OperatorPack({
   const [items, setItems] = useState<Cosmetics | null>(null)
   const [weapons, setWeapons] = useState<Weapon[] | null>(null)
   const [charms, setCharms] = useState<Charm[] | null>(null)
-  const [pics, setPics] = useState<Record<string, string>>({})
   const [tab, setTab] = useState<Tab>('uniform')
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [skins, setSkins] = useState<Record<string, Set<string>>>({})
@@ -391,29 +418,6 @@ function OperatorPack({
       ['pack.exclusive', shown.filter((s) => !s.universal).sort(newestFirst)]
     ]
   }
-
-  // the game's pictures of what's on screen, in the page's order and in batches; decoded once, then served from disk
-  const wanted = useMemo((): string[] => {
-    if (tab === 'uniform' || tab === 'headgear') return (items?.[tab] ?? []).map((i) => i.uid)
-    if (tab === 'sight') return (weapons ?? []).flatMap((w) => w.sights.map((s) => s.uid))
-    if (tab === 'charm') return bySeason.flatMap(([, list]) => list.map((c) => c.icon)).filter(Boolean)
-    return (weapons ?? []).flatMap((w) => skinGroups(w).flatMap(([, list]) => list.map((s) => s.icon))).filter(Boolean)
-  }, [tab, items, weapons, bySeason, query, years])
-  useEffect(() => {
-    if (!indexed) return
-    let alive = true
-    const order = [...new Set(wanted)].filter((u) => !(u in pics))
-    ;(async () => {
-      for (let i = 0; i < order.length && alive; i += 32) {
-        const part = order.slice(i, i + 32)
-        const got = await api.call<Record<string, string>>('operators.icons', { uids: part }).catch(() => ({}) as Record<string, string>)
-        if (alive) setPics((all) => ({ ...all, ...Object.fromEntries(part.map((u) => [u, got[u] ?? ''])) }))
-      }
-    })()
-    return () => {
-      alive = false
-    }
-  }, [wanted, indexed])
 
   const flip = (set: Set<string>, id: string) => {
     const next = new Set(set)
@@ -494,7 +498,7 @@ function OperatorPack({
       disabled={busy}
       title={opts.missing ? t('pack.notDownloaded') : opts.caption}
     >
-      <span className="pic">{pic && pics[pic] ? <img src={pics[pic]} alt="" draggable={false} /> : !pic || pic in pics ? <span className="cosmetic-none" /> : <span className="cosmetic-wait" />}</span>
+      <span className="pic">{pic && indexed ? <img src={picture(pic)} alt="" draggable={false} onError={hide} /> : <span className="cosmetic-none" />}</span>
       {opts.caption && <span className="cosmetic-caption">{opts.caption}</span>}
       {opts.sub && <span className="cosmetic-sub">{opts.sub}</span>}
       {on && (
@@ -527,9 +531,9 @@ function OperatorPack({
           <ArrowLeft size={15} /> {t('pack.back')}
         </button>
         <div className={`detail-cover op-cover ${operator.side}`}>
-          {portrait ? <img src={portrait} alt="" draggable={false} /> : <Shards seed={parseInt(operator.uid.slice(-6), 16)} hue={hueOf(operator.name)} />}
+          {indexed ? <img src={picture(operator.uid)} alt="" draggable={false} onError={hide} /> : <Shards seed={parseInt(operator.uid.slice(-6), 16)} hue={hueOf(operator.name)} />}
           <div className="detail-cover-text">
-            {emblem && <img className="op-emblem" src={emblem} alt="" draggable={false} />}
+            {indexed && <img className="op-emblem" src={picture(`${operator.uid}.emblem`)} alt="" draggable={false} onError={hide} />}
             <span>{t(`side.${operator.side || 'all'}`)}</span>
             <b>{operator.name}</b>
           </div>
@@ -558,11 +562,12 @@ function OperatorPack({
               <small>{progress ? t(phase, { done: progress.done, total: progress.total }) : '…'}</small>
             </div>
           ) : (
-            <button className="btn primary" onClick={create} disabled={!indexed || !counts.uniform || !counts.headgear}>
+            <button className="btn primary" onClick={create} disabled={!indexed || preparing || !counts.uniform || !counts.headgear}>
               <Package size={16} /> {t('pack.create')}
             </button>
           )}
           {!indexed && <small className="op-note">{t('op.needIndex')}</small>}
+          {indexed && preparing && <small className="op-note">{t('op.refreshTitle')}</small>}
           {indexed && !blenderOk && <small className="op-note">{t('pack.noBlender')}</small>}
           {!busy && (blend || folder) && (
             <div className="row pack-open">

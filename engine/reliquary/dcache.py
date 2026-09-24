@@ -38,7 +38,8 @@ def cache_root() -> Path:
 
 
 def read_entry(data: bytes) -> bytes | None:
-    """The decompressed content of one cache entry, or None when it isn't complete on disk."""
+    """The decompressed content of one cache entry, or None when it isn't a complete Forge entry: about a third of
+    the cache are placeholders the game hasn't filled yet (zeros after the header), and some are media files."""
     pos = data.find(MAGIC)
     if pos < 4:
         return None
@@ -106,39 +107,54 @@ def describe(doc: dict) -> dict | None:
 
 
 def _signature(root: Path) -> str:
+    """Whether the game downloaded something: its own index of the cache changes with every download (walking the
+    5,000 files instead takes over a second)."""
+    index = root.parent / "downloadcache.dcindex"
+    if index.is_file():
+        stat = index.stat()
+        return f"i:{stat.st_size}:{stat.st_mtime_ns}"
     files = [f for f in root.rglob("*.data")]
-    return f"2:{len(files)}:{max((f.stat().st_mtime_ns for f in files), default=0)}"  # 2: patterns are skins now
+    return f"2:{len(files)}:{max((f.stat().st_mtime_ns for f in files), default=0)}"
 
 
 def catalog(announce: bool = True) -> list[dict]:
-    """Every usable document in the cache, remembered until the game downloads something new."""
+    """Every usable document in the cache, remembered on disk: later calls read only what the game added."""
     root = cache_root()
     if not root.is_dir():
         return []
     store = settings.HOME / "dcache.json"
-    signature = _signature(root)
     try:
         saved = json.loads(store.read_text(encoding="utf-8"))
-        if saved.get("signature") == signature:
-            return saved["entries"]
-    except (OSError, ValueError):
-        pass
-    files = sorted(root.rglob("*.data"))
-    entries = []
+        known = saved["files"] if saved.get("version") == 3 else {}
+    except (OSError, ValueError, KeyError):
+        known = {}
+    # each file is read once: {path: [size, mtime, what it is or None]}; a file the game rewrites is read again
+    files, seen = sorted(root.rglob("*.data")), {}
     for done, path in enumerate(files):
         if announce and done % 200 == 0:
             emit("operators.progress", {"step": "cache", "done": done, "total": len(files), "file": ""})
+        file = str(path.relative_to(root))
         try:
-            content = read_entry(path.read_bytes())
-            parsed = glb(content) if content else None
-            info = describe(parsed[0]) if parsed else None
-        except (OSError, ValueError, KeyError, struct.error, zstandard.ZstdError) as error:
+            stat = path.stat()
+            stamp = [stat.st_size, stat.st_mtime_ns]
+            if known.get(file, [])[:2] == stamp:
+                seen[file] = known[file]
+                continue
+            data = path.read_bytes()
+        except OSError as error:  # evicted or being written by the game: looked at again next time
             print(f"Cache entry {path.name}: {error}", file=sys.stderr)
             continue
-        if info:
-            entries.append({"file": str(path.relative_to(root)), **info})
-    store.write_text(json.dumps({"signature": signature, "entries": entries}), encoding="utf-8")
-    return entries
+        try:
+            content = read_entry(data)
+            parsed = glb(content) if content else None
+            info = describe(parsed[0]) if parsed else None
+        except (ValueError, KeyError, struct.error, zstandard.ZstdError) as error:
+            print(f"Cache entry {path.name}: {error}", file=sys.stderr)
+            info = None
+        seen[file] = stamp + [info]
+    if seen != known:
+        store.write_text(json.dumps({"version": 3, "files": seen}), encoding="utf-8")
+    return [{"file": file, **info} for file, (_, _, info) in seen.items() if info]
 
 
 def _open(file: str) -> tuple[dict, bytes]:
@@ -167,13 +183,20 @@ def _texture_png(doc: dict, binary: bytes, tex: dict, path: Path, tile: int = 1)
         image = source.convert("RGBA")
     if fmt == 6 and preset.get("TextureMapType") == 1:
         image = texture.reconstruct_bc5_z(image)  # BC5 normals keep X and Y only
-    if tile > 1:
-        image.thumbnail((2048 // tile, 2048 // tile))  # the tiled sheet stays within 2048 px
-        sheet = Image.new(image.mode, (image.width * tile, image.height * tile))
-        for n in range(tile * tile):
-            sheet.paste(image, ((n % tile) * image.width, (n // tile) * image.height))
-        image = sheet
-    image.save(path)
+    repeat(image, tile).save(path)
+
+
+def repeat(image, tile: int):
+    """A camo pattern repeated tile x tile, the way the game lays it over the weapon's UVs (within 2048 px)."""
+    from PIL import Image
+
+    if tile <= 1:
+        return image
+    image.thumbnail((2048 // tile, 2048 // tile))
+    sheet = Image.new(image.mode, (image.width * tile, image.height * tile))
+    for n in range(tile * tile):
+        sheet.paste(image, ((n % tile) * image.width, (n // tile) * image.height))
+    return sheet
 
 
 def textures(file: str, out: Path) -> dict[str, str]:

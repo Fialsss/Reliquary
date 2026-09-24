@@ -120,10 +120,29 @@ def attach(entries: list[dict], docs: list[dict], doc_words) -> None:
             entries[fits[0][1]].setdefault("file", doc["file"])
 
 
+def _uids(data: bytes) -> list[int]:
+    return [u for u in dict.fromkeys(operators._u64(data, o) for o in range(len(data) - 7)) if u > 0xFFFFFFFF]
+
+
+def installed(candidates: dict[int, list[int]], types: set[int]) -> dict[int, str]:
+    """Which items the game installed with itself (datapc64_mtx, _dmtx…): the first of each item's candidate uids
+    the asset index knows with one of `types`, as a `file` ("game:<uid>"). Those export without the download cache."""
+    from src.database import load_asset_index
+
+    index = load_asset_index(operators._database(), {u for uids in candidates.values() for u in uids})
+    found = {key: next((u for u in uids if (r := index.primary(u)) is not None and r.file_type in types), 0)
+             for key, uids in candidates.items()}
+    return {key: f"{operators.INSTALLED}{uid:016X}" for key, uid in found.items() if uid}
+
+
 def weapon_skins(weapon: bytes, records: dict, docs: list[dict]) -> list[dict]:
     """Every skin of a weapon (its skin entries → catalog item + skin definition with the preview); `file` for the
-    ones in the download cache (docs: the cache documents already matched to this weapon)."""
-    shop, out = items(), []
+    ones that can be exported: in the download cache (docs: the cache documents already matched to this weapon),
+    or installed with the game (the entry's appearance names a material or a model of the game's mtx archives)."""
+    from src.material import CURRENT_MATERIAL
+    from src.operator_registry import APPEARANCE_TYPE
+
+    shop, out, looks = items(), [], {}
     if not shop:  # no catalog yet (the game hasn't opened its shop): what the game has downloaded
         return [{"id": d["file"], "icon": "", "name": d["name"], "season": "", "rarity": "", "file": d["file"],
                  "universal": bool(d.get("pattern")) or "UNISKIN" in d["material"].upper()} for d in docs]
@@ -137,22 +156,30 @@ def weapon_skins(weapon: bytes, records: dict, docs: list[dict]) -> list[dict]:
         item = shop.get(refs.get(operators.ITEM, -1))
         if not item or item.get("type") != "WeaponSkin":
             continue
+        looks[entry] = [u for a in _uids(data) if a in records and records[a][0].file_type == APPEARANCE_TYPE for u in _uids(records[a][0].data)]
         out.append({"id": f"{entry:016X}", "icon": f"{refs[operators.SKIN_DEF]:016X}" if operators.SKIN_DEF in refs else "",
                     **describe(item), "universal": any("universal" in t for t in item.get("tags", [])) or item["nameId"].startswith("weapon_skins_universal"),
                     "_words": _words(item)})
     # a camo pattern's document is named after the weapon's material: its pattern is in the name (Aloha B)
     attach(out, docs, lambda d: _tokens(d["material"], d["name"] if d.get("pattern") else "") - _tokens(d["class"], d["code"]))
-    return sorted(({k: v for k, v in s.items() if k != "_words"} | {"file": s.get("file", "")} for s in out),
+    game = installed(looks, {CURRENT_MATERIAL, *operators.MODEL_TYPES})
+    return sorted(({k: v for k, v in s.items() if k != "_words"} | {"file": s.get("file") or game.get(int(s["id"], 16), "")} for s in out),
                   key=lambda s: s["name"].lower())
 
 
 @method("catalog.charms")
 def charms() -> list[dict]:
+    """Every charm, as `operators.index` got them ready; worked out now when it hasn't."""
+    return operators._prepared().get("charms") or find_charms()
+
+
+def find_charms(cached: list[dict] | None = None) -> list[dict]:
     """Every charm in the game, with its picture (icon: the registry charm), season, rarity, kind and rank;
-    `file` when the game has downloaded it, so it can go in a pack."""
+    `file` when it can go in a pack: downloaded by the game, or installed with it (a model the charm names).
+    cached: the download cache's documents, when the caller has read them already."""
     from . import dcache
 
-    docs = [e for e in dcache.catalog() if e["kind"] == "charm"]
+    docs = [e for e in (dcache.catalog() if cached is None else cached) if e["kind"] == "charm"]
     if not items():  # no catalog yet: the downloaded ones
         return sorted(({"id": d["file"], "icon": "", "name": d["name"], "season": "", "rarity": "", "family": "other",
                         "rank": "", "file": d["file"]} for d in {d["material"]: d for d in docs}.values()), key=lambda c: c["name"].lower())
@@ -162,5 +189,6 @@ def charms() -> list[dict]:
             "family": family(item), "rank": rank(item), "_words": _words(item)}
            for goid, item in items().items() if item.get("type") == "Charm"]
     attach(out, docs, lambda d: _tokens(d["material"]))
-    return sorted(({k: v for k, v in c.items() if k != "_words"} | {"file": c.get("file", "")} for c in out),
+    game = installed({u: _uids(more[u][0].data) for u in by_item.values()}, set(operators.MODEL_TYPES))
+    return sorted(({k: v for k, v in c.items() if k != "_words"} | {"file": c.get("file") or game.get(int(c["icon"] or "0", 16), "")} for c in out),
                   key=lambda c: c["name"].lower())

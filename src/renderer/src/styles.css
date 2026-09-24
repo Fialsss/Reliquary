@@ -2537,29 +2537,6 @@ p {
 .tour-features svg {
   color: var(--ink);
 }
-.tour-cats {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  margin-top: 6px;
-}
-.tour-cats span {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 9px 10px;
-  border-radius: var(--r1);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--line-2);
-}
-.tour-cats b {
-  font-size: 12.5px;
-}
-.tour-cats small {
-  font: 10.5px var(--mono);
-  color: var(--ink-3);
-}
 .tour-foot {
   display: flex;
   align-items: center;
@@ -3244,7 +3221,7 @@ p {
 /* ------------------------------------------------------------- operators */
 .pipeline {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr); /* Prepare, pick an operator, create the pack */
   gap: 14px;
 }
 .link {
@@ -3273,6 +3250,15 @@ p {
 }
 .link.bad {
   border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+}
+/* the step to do now: a white edge and a white icon, like the primary button */
+.link.next {
+  border-color: rgba(255, 255, 255, 0.55);
+}
+.link.next .link-icon {
+  color: var(--s0);
+  background: #fff;
+  border-color: #fff;
 }
 .link-icon {
   width: 40px;
@@ -3691,4 +3677,20 @@ p {
   display: flex;
   gap: 8px;
   width: 100%;
+}
+/* how to get an item the game hasn't downloaded: three steps, check now, the old-season way for retired ones */
+.dialog.get-it {
+  width: 440px;
+}
+.get-it-title {
+  font-size: 17px;
+  line-height: 1.35;
+}
+.get-it-note {
+  color: var(--ink-3);
+}
+/* the "To download" badge, shown as it looks on a card, inside the tour */
+.cosmetic-cloud.sample {
+  position: static;
+  align-self: flex-start;
 }

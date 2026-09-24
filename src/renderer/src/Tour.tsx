@@ -1,25 +1,32 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Archive, ArrowLeft, ArrowRight, Blocks, Check, LogIn, Users } from 'lucide-react'
+import { Archive, ArrowLeft, ArrowRight, Blocks, Check, CloudDownload, Package, Users } from 'lucide-react'
 import type { Page } from './App'
 import { Mark } from './art'
 import { useI18n } from './i18n'
-import { useSession } from './session'
+import { openAt } from './pages/Settings'
 
 type Step = { key: string; page?: Page; target?: string }
 
-// Each step optionally switches page and points at one element. One sentence each, no walls of text.
+// Each step optionally switches page and points at one element. One sentence each, no walls of text: the
+// app's own way through (Prepare → an operator → a Blender pack) first, where things come from after.
 const STEPS: Step[] = [
   { key: 'welcome' },
-  { key: 'steam', target: '.account' },
+  { key: 'prepare', page: 'operators', target: '.pipeline .link' },
+  { key: 'choose', page: 'operators', target: '.grid.ops .op' },
+  { key: 'pack', page: 'operators' },
+  { key: 'missing', page: 'operators' },
+  { key: 'old', page: 'settings', target: '.nav button.active' },
   { key: 'vault', page: 'vault', target: '.nav button.active' },
-  { key: 'season', page: 'vault', target: '.tile' },
-  { key: 'files', page: 'vault' },
-  { key: 'download', page: 'vault', target: '.top-right' },
   { key: 'done', target: '.help' }
 ]
 const FEATURES = [
-  ['vault', Archive],
   ['operators', Users],
+  ['blender', Blocks],
+  ['vault', Archive]
+] as const
+const PACK = [
+  ['tick', Check],
+  ['create', Package],
   ['blender', Blocks]
 ] as const
 const PAD = 8
@@ -33,7 +40,6 @@ const closed = (): Box => ({ top: innerHeight / 2, left: innerWidth / 2, width: 
 /** A guided tour in a small card: dims the app and lights up the part to use next. */
 export default function Tour({ go, close }: { go: (page: Page) => void; close: () => void }) {
   const { t } = useI18n()
-  const { profile, signIn } = useSession()
   const [index, setIndex] = useState(0)
   const [dir, setDir] = useState(1)
   // opens from the window's edges, then closes in on the first step
@@ -53,6 +59,7 @@ export default function Tour({ go, close }: { go: (page: Page) => void; close: (
   }
 
   useEffect(() => {
+    if (step.key === 'old') openAt('paths') // old builds are set in Settings → Paths
     if (step.page) go(step.page)
   }, [index])
 
@@ -142,24 +149,21 @@ export default function Tour({ go, close }: { go: (page: Page) => void; close: (
                 ))}
               </div>
             )}
-            {step.key === 'files' && (
-              <div className="tour-cats">
-                {(['data', 'textures', 'meshes'] as const).map((c) => (
-                  <span key={c}>
-                    <b>{t(`cat.${c}`)}</b>
-                    <small>{t(`tour.cat.${c}`)}</small>
+            {step.key === 'pack' && (
+              <div className="tour-features">
+                {PACK.map(([key, Icon]) => (
+                  <span key={key}>
+                    <Icon size={18} strokeWidth={1.8} />
+                    {t(`tour.pack.${key}`)}
                   </span>
                 ))}
               </div>
             )}
-            {step.key === 'steam' &&
-              (profile ? (
-                <span className="chip ok dot">{t('steam.signedIn', { user: profile.name })}</span>
-              ) : (
-                <button className="btn primary small" onClick={signIn}>
-                  <LogIn size={14} /> {t('tour.signInNow')}
-                </button>
-              ))}
+            {step.key === 'missing' && (
+              <span className="cosmetic-cloud sample">
+                <CloudDownload size={13} /> {t('pack.toDownload')}
+              </span>
+            )}
           </div>
         </div>
 

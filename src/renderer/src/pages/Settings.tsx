@@ -36,11 +36,19 @@ const CREDITS = [
   ['RainbowForge', 'parzivail', 'https://github.com/parzivail/RainbowForge']
 ] as const
 
+// where the next visit opens: other pages send people straight to a section (Old builds live in Paths)
+let opening: Section = 'account'
+export const openAt = (section: Section) => void (opening = section)
+
 export default function Settings({ status, refresh, setArt, startTour }: PageProps) {
   const { t, lang, setLang } = useI18n()
   const { profile, signIn, signOut } = useSession()
   const [values, setValues] = useState<Values | null>(null)
-  const [section, setSection] = useState<Section>('account')
+  const [section, setSection] = useState<Section>(() => {
+    const first = opening
+    opening = 'account'
+    return first
+  })
 
   useEffect(() => {
     setArt({ seed: 3, hue: 220 })

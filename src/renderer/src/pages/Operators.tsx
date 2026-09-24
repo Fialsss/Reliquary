@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Box, Check, ChevronDown, ChevronRight, CloudDownload, Cpu, Crosshair, Database, Focus, FolderOpen, FolderSearch, Gem, HardHat, Package, Search, Shirt, Users, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { ArrowLeft, Box, Check, ChevronDown, ChevronRight, CloudDownload, Cpu, Crosshair, Database, Focus, FolderOpen, FolderSearch, Gem, HardHat, Package, RefreshCw, Search, Shirt, Users, X } from 'lucide-react'
 import type { PageProps } from '../App'
 import { api, bytes, useEngineEvent, type Operator } from '../api'
 import { hueOf, Shards } from '../art'
 import { useI18n } from '../i18n'
 import { useSession } from '../session'
 import { PageHead, Segmented, Spinner } from '../ui'
+import { openAt } from './Settings'
 
 type Read = { state: 'waiting' | 'reading' | 'ok' | 'outdated' | 'failed'; operators?: Operator[]; error?: string }
 type Index = { indexed: boolean; stale: boolean; bytes: number; exports: string; busy: boolean }
@@ -18,15 +20,20 @@ type Cosmetics = { uniform: Cosmetic[]; headgear: Cosmetic[] }
 // so pictures that weren't on disk before (a refresh adding new items) are asked for again
 let preparing: Promise<Index> | null = null
 let generation = 0
+// what was open when the page was left (Settings from the "How to get it" dialog, another page): back to it on
+// return, with what was picked for each operator
+let lastOpen: Operator | null = null
+type Picks = { picked: Set<string>; skins: Record<string, Set<string>>; sights: Record<string, Set<string>>; charmPicks: Set<string> }
+const kept = new Map<string, Picks>()
 // the game's pictures, decoded by Prepare and served from disk by the main process (see src/main: pic://)
 const picture = (uid: string) => `pic://p/${uid}.webp?${generation}`
 // an item Prepare found no picture for: the card keeps its backdrop
 const hide = (e: React.SyntheticEvent<HTMLImageElement>) => (e.currentTarget.style.display = 'none')
 
 /**
- * The roster comes straight from the installed game: find the game, decompress
- * with Oodle, read the registry, index the assets. The page shows that chain, so
- * it's clear which link is missing; then any operator becomes a Blender pack.
+ * The roster comes straight from the installed game. The page leads through three steps: Prepare once, pick
+ * an operator, build its Blender pack; the checks behind the first one (game, Oodle, roster) explain
+ * themselves in a card when one fails.
  */
 export default function Operators({ go, setArt, status, refresh }: PageProps) {
   const { t } = useI18n()
@@ -35,7 +42,8 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
   const [index, setIndex] = useState<Index | null>(null)
   const [progress, setProgress] = useState<Progress | null>(null)
   const [indexing, setIndexing] = useState(false)
-  const [open, setOpen] = useState<Operator | null>(null)
+  const [open, setOpen] = useState<Operator | null>(() => lastOpen)
+  useEffect(() => void (lastOpen = open), [open])
   const [query, setQuery] = useState('')
   const [side, setSide] = useState<Side>('all')
   const gameOk = !!status?.game.ok
@@ -71,6 +79,7 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
     alive.current = true
     return () => void (alive.current = false)
   }, [])
+  const [round, setRound] = useState(0) // Prepare runs finished while here: the operator page reloads its lists
   const buildIndex = async () => {
     setIndexing(true)
     try {
@@ -81,6 +90,7 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
       const ready = await preparing
       if (!alive.current) return
       setIndex(ready)
+      setRound((n) => n + 1)
       toast(t('op.indexDone'), 'ok')
     } catch (e) {
       if (alive.current) toast(t((e as Error).message), 'bad')
@@ -96,9 +106,26 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
     if (preparing) buildIndex()
   }, [])
   // the game changed since (an update, new downloads): get ready again by itself, showing what's there meanwhile
+  const renew = (s: Index | null) => {
+    if (s?.stale && !s.busy && !preparing && gameOk && oodleOk) buildIndex()
+  }
+  useEffect(() => renew(index), [index?.stale, index?.busy, gameOk, oodleOk])
+  // back from the game (the window has the focus again): what it downloaded meanwhile shows up by itself, even
+  // when the page already knew it was stale (a run that ended while the game kept downloading)
+  const latest = useRef(renew)
+  latest.current = renew
   useEffect(() => {
-    if (index?.stale && !index.busy && !indexing && gameOk && oodleOk) buildIndex()
-  }, [index?.stale, gameOk, oodleOk])
+    const check = () =>
+      api
+        .call<Index>('operators.status')
+        .then((s) => {
+          setIndex(s)
+          latest.current(s)
+        })
+        .catch(() => undefined)
+    addEventListener('focus', check)
+    return () => removeEventListener('focus', check)
+  }, [])
 
   // Prepare as one bar, like a download: which step, how far and, in the long last step, the time left
   const pace = useRef<{ step: string; at: number; done: number } | null>(null)
@@ -121,6 +148,9 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
         operator={open}
         indexed={indexed}
         preparing={indexing}
+        round={round}
+        checkNow={buildIndex}
+        go={go}
         blenderOk={!!status?.blender.ok}
         progress={progress?.uid === open.uid || progress?.step === 'cache' ? progress : null}
         back={() => {
@@ -132,25 +162,23 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
     )
   }
 
-  const store = status?.game.path.includes('steamapps') ? 'Steam' : 'Ubisoft Connect'
   const indexOk = !!index?.indexed && !indexing
+  // the three things to do, in order: what a first visit needs to see (the checks behind step 1 explain
+  // themselves in the cards below when one fails)
+  const blocked = !gameOk ? 'pipe.noGame' : !oodleOk ? 'pipe.noOodle' : read.state === 'outdated' || read.state === 'failed' ? `pipe.${read.state}` : ''
   const links = [
-    { key: 'game', icon: FolderSearch, ok: gameOk, detail: gameOk ? store : t('pipe.missing') },
-    { key: 'oodle', icon: Cpu, ok: oodleOk, detail: oodleOk ? (status?.oodle.bundled ? t('check.oodle.bundled') : 'oo2core') : t('pipe.missing') },
     {
-      key: 'read',
-      icon: Users,
-      ok: read.state === 'ok',
-      detail: read.state === 'ok' ? t('pipe.count', { n: read.operators!.length }) : t(`pipe.${read.state}`)
-    },
-    {
-      key: 'index',
+      key: 'prepare',
       icon: Database,
-      ok: indexOk,
-      busy: indexing,
-      detail: indexing ? `${Math.round(prepShare * 100)}%` : indexOk ? bytes(index!.bytes) : t('pipe.indexMissing')
-    }
+      ok: indexOk && !blocked,
+      bad: !!blocked,
+      busy: indexing || read.state === 'reading',
+      detail: blocked ? t(blocked) : indexing ? `${Math.round(prepShare * 100)}%` : indexOk ? t('pipe.prepared', { size: bytes(index!.bytes) }) : t('pipe.indexMissing')
+    },
+    { key: 'choose', icon: Users, ok: false, bad: false, busy: false, detail: read.state === 'ok' ? t('pipe.chooseDetail', { n: read.operators!.length }) : '…' },
+    { key: 'pack', icon: Package, ok: false, bad: false, busy: false, detail: t('pipe.packDetail') }
   ]
+  const next = blocked ? '' : indexOk ? 'choose' : 'prepare'
   const all = read.operators ?? []
   const shown = all.filter((o) => o.name.toLowerCase().includes(query.toLowerCase()))
   const sides = (['attack', 'defense'] as const).filter((s) => side === 'all' || side === s)
@@ -196,11 +224,9 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
       />
 
       <div className="pipeline">
-        {links.map(({ key, icon: Icon, ok, detail, busy: linkBusy }, i) => {
-          const busy = linkBusy || (key === 'read' && read.state === 'reading')
-          const bad = !ok && !busy && (key !== 'read' || read.state === 'outdated' || read.state === 'failed') && key !== 'index'
+        {links.map(({ key, icon: Icon, ok, detail, busy, bad }, i) => {
           return (
-            <div key={key} className={`link${ok ? ' ok' : bad ? ' bad' : ''}`}>
+            <div key={key} className={`link${ok ? ' ok' : bad ? ' bad' : ''}${key === next ? ' next' : ''}`}>
               <span className="link-icon">{busy ? <Spinner /> : <Icon size={18} strokeWidth={1.8} />}</span>
               <div className="grow">
                 <small className="mono">0{i + 1}</small>
@@ -347,6 +373,9 @@ function OperatorPack({
   operator,
   indexed,
   preparing,
+  round,
+  checkNow,
+  go,
   blenderOk,
   progress,
   back
@@ -354,6 +383,9 @@ function OperatorPack({
   operator: Operator
   indexed: boolean
   preparing: boolean // Prepare is refreshing: it holds the engine, so packs wait for it
+  round: number // goes up when a Prepare run ends: the lists are read again
+  checkNow: () => void
+  go: PageProps['go']
   blenderOk: boolean
   progress: Progress | null
   back: () => void
@@ -363,11 +395,21 @@ function OperatorPack({
   const [items, setItems] = useState<Cosmetics | null>(null)
   const [weapons, setWeapons] = useState<Weapon[] | null>(null)
   const [charms, setCharms] = useState<Charm[] | null>(null)
+  const [getIt, setGetIt] = useState<string | null>(null) // an item the game hasn't downloaded: how to get it
+  useEffect(() => {
+    if (getIt === null) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setGetIt(null)
+    addEventListener('keydown', onKey)
+    return () => removeEventListener('keydown', onKey)
+  }, [getIt])
   const [tab, setTab] = useState<Tab>('uniform')
-  const [picked, setPicked] = useState<Set<string>>(new Set())
-  const [skins, setSkins] = useState<Record<string, Set<string>>>({})
-  const [sights, setSights] = useState<Record<string, Set<string>>>({})
-  const [charmPicks, setCharmPicks] = useState<Set<string>>(new Set())
+  const saved = kept.get(operator.uid)
+  const [picked, setPicked] = useState<Set<string>>(saved?.picked ?? new Set())
+  const [skins, setSkins] = useState<Record<string, Set<string>>>(saved?.skins ?? {})
+  const [sights, setSights] = useState<Record<string, Set<string>>>(saved?.sights ?? {})
+  const [charmPicks, setCharmPicks] = useState<Set<string>>(saved?.charmPicks ?? new Set())
+  useEffect(() => void kept.set(operator.uid, { picked, skins, sights, charmPicks }), [picked, skins, sights, charmPicks])
+  const seeded = useRef(!!saved) // the default uniform and headgear get picked once, the first time only
   const [query, setQuery] = useState('')
   const [years, setYears] = useState<Set<string>>(new Set())
   const [families, setFamilies] = useState<Set<string>>(new Set())
@@ -382,18 +424,24 @@ function OperatorPack({
       .call<Cosmetics>('operators.cosmetics', { uid: operator.uid })
       .then((c) => {
         setItems(c)
-        setPicked(new Set([...c.uniform, ...c.headgear].filter((i) => i.default).map((i) => i.uid)))
+        // the defaults the first time; after a refresh or a return, what was picked (or cleared) stays so
+        if (!seeded.current) {
+          seeded.current = true
+          setPicked(new Set([...c.uniform, ...c.headgear].filter((i) => i.default).map((i) => i.uid)))
+        }
       })
       .catch((e: Error) => setError(e.message))
-  }, [operator.uid])
+  }, [operator.uid, round])
 
-  // weapons, sights and charms: only once someone opens their tab
+  // weapons, sights and charms: once someone opens their tab, and again after a Prepare run (new downloads)
   const catalogTab = tab === 'weapon' || tab === 'sight' || tab === 'charm'
+  const readRound = useRef(-1)
   useEffect(() => {
-    if (!catalogTab || !indexed || weapons) return
+    if (!catalogTab || !indexed || readRound.current === round) return
+    readRound.current = round
     api.call<Weapon[]>('operators.weapons', { uid: operator.uid }).then(setWeapons).catch((e: Error) => setError(e.message))
     api.call<Charm[]>('catalog.charms').then(setCharms).catch(() => setCharms([]))
-  }, [catalogTab, indexed])
+  }, [catalogTab, indexed, round])
 
   // what the filters let through: search, seasons (skins and charms), kind and rank (charms)
   const q = query.toLowerCase()
@@ -481,8 +529,8 @@ function OperatorPack({
   const phase = progress?.step === 'blend' ? 'pack.blending' : progress?.step === 'cache' ? 'pack.cacheReading' : 'pack.exporting'
   const share = progress && progress.step !== 'done' ? (progress.done / Math.max(progress.total, 1)) * (progress.step === 'blend' ? 0.4 : 0.6) + (progress.step === 'blend' ? 0.6 : 0) : 0
 
-  /** A pickable card: the game's picture (a shimmer while it's decoded), a check when picked, the name under it.
-   * Items the game hasn't downloaded yet can't be picked: they say how to get them. */
+  /** A pickable card: the game's picture, a check when picked, the name under it. Items the game hasn't
+   * downloaded yet can't be picked: a click opens how to get them. */
   const card = (
     key: string,
     pic: string,
@@ -494,9 +542,9 @@ function OperatorPack({
       key={key}
       className={`cosmetic ${opts.shape}${on ? ' on' : ''}${opts.missing ? ' missing' : ''}`}
       data-rarity={opts.rarity || undefined}
-      onClick={opts.missing ? () => toast(t('pack.notDownloaded'), 'muted') : onClick}
+      onClick={opts.missing ? () => setGetIt(opts.caption ?? '') : onClick}
       disabled={busy}
-      title={opts.missing ? t('pack.notDownloaded') : opts.caption}
+      title={opts.missing ? t('pack.notDownloadedShort') : opts.caption}
     >
       <span className="pic">{pic && indexed ? <img src={picture(pic)} alt="" draggable={false} onError={hide} /> : <span className="cosmetic-none" />}</span>
       {opts.caption && <span className="cosmetic-caption">{opts.caption}</span>}
@@ -735,6 +783,47 @@ function OperatorPack({
             ))}
         </div>
       </section>
+      {getIt !== null &&
+        createPortal(
+          <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setGetIt(null)}>
+            <div className="dialog get-it" role="dialog" aria-modal="true" aria-label={t('getit.label')}>
+              <button className="dialog-close" onClick={() => setGetIt(null)} aria-label={t('window.close')}>
+                <X size={16} />
+              </button>
+              <div className="label">{t('getit.label')}</div>
+              <b className="get-it-title">{t('getit.title', { name: getIt })}</b>
+              <ol className="login-steps">
+                <li>{t('getit.step1')}</li>
+                <li>{t('getit.step2', { name: getIt })}</li>
+                <li>{t('getit.step3')}</li>
+              </ol>
+              <button
+                className="btn primary small"
+                disabled={preparing}
+                autoFocus
+                onClick={() => {
+                  setGetIt(null)
+                  checkNow()
+                }}
+              >
+                <RefreshCw size={14} /> {t(preparing ? 'op.refreshTitle' : 'getit.check')}
+              </button>
+              <small className="get-it-note">
+                {t('getit.retired')}{' '}
+                <button
+                  className="link-btn"
+                  onClick={() => {
+                    openAt('paths')
+                    go('settings')
+                  }}
+                >
+                  {t('getit.oldBuilds')}
+                </button>
+              </small>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   )
 }

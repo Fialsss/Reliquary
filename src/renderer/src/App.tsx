@@ -32,8 +32,8 @@ function firstPage(): Page {
 // The guided tour opens by itself on the very first launch.
 function firstLaunch(): boolean {
   try {
-    if (localStorage.getItem('tourSeen')) return false
-    localStorage.setItem('tourSeen', '1')
+    if (localStorage.getItem('tourSeen2')) return false
+    localStorage.setItem('tourSeen2', '1')
   } catch {
     return false
   }

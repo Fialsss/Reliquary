@@ -8,7 +8,8 @@ the Siege materials: one collection per uniform and per headgear, ready to switc
 
 Uniforms and headgears are the registry's body (69EE9B83) and head (A2929EB6)
 items: each names its operator at +105, its appearance (the models) at +8 and
-its UI record (label and icon) at +53.
+its UI record (label and icon) at +53; with a second appearance (at +16: some Elite
+and collection sets) the later fields move on by 8 (see _field).
 """
 from __future__ import annotations
 
@@ -34,6 +35,7 @@ sys.path.insert(0, str(PARSER))
 TEXTURE_MAP_SPEC = 0x4F09331E
 ICON_BOX = (1024, 1024)  # the pictures at their own size: portraits 436x736, skin previews 440x144, charms 268x220…
 _busy = threading.Lock()  # indexing and exporting both read the whole game: one at a time
+PREPARED = 2  # what Prepare makes: bumped when that changes (2: cosmetics with two appearances), so it runs again
 _types_lock = threading.Lock()  # guards the parser's module-level KEEP_TYPES while a reader uses it
 
 
@@ -156,7 +158,8 @@ def _signature() -> str:
     files = (_game() / "datapc64.forge", catalog._path())
     cache = dcache.cache_root()
     return (":".join(str(f.stat().st_mtime_ns) if f.is_file() else "0" for f in files) + ":"
-            + (dcache._signature(cache) if cache.is_dir() else "") + ":" + json.dumps([retired.stamp(b) for b in retired.builds()]))
+            + (dcache._signature(cache) if cache.is_dir() else "") + ":" + json.dumps([retired.stamp(b) for b in retired.builds()])
+            + f":{PREPARED}")
 
 
 @method("operators.status")
@@ -265,12 +268,19 @@ def _is_cosmetic(record) -> bool:
     return record.file_type in (BODY_TYPE, HEAD_TYPE)
 
 
+def _field(data: bytes, offset: int) -> int:
+    """A field of a uniform, headgear or weapon record by its offset in the one-appearance layout (UI record +53,
+    operator +105; a weapon's name record +423). The u32 at +4 counts its appearances (u64s from +8): some Elite
+    and collection sets have two (Ash's Tomb Raider, Field Prep…), which moves every later field on by 8 each."""
+    return _u64(data, offset + 8 * (max(1, struct.unpack_from("<I", data, 4)[0]) - 1)) if len(data) >= 8 else 0
+
+
 def _describe(uid: int, record, records: dict, shop: dict) -> dict:
     from src.operator_registry import BODY_TYPE, DEFAULT_NAME_KEY, _localized_text
     from . import catalog
 
     label, key = "", 0
-    ui = records.get(_u64(record.data, 53))
+    ui = records.get(_field(record.data, 53))
     if ui:
         try:
             label, key = _localized_text(ui[0].data)
@@ -295,7 +305,7 @@ def cosmetics(uid: str) -> dict:
     owner = int(uid, 16)
     records, shop = _records(), catalog.items()
     items = [_describe(u, v[0], records, shop) for u, v in records.items()
-             if _is_cosmetic(v[0]) and _u64(v[0].data, 105) == owner]
+             if _is_cosmetic(v[0]) and _field(v[0].data, 105) == owner]
     items.sort(key=lambda i: (not i["default"], -int(i["uid"], 16)))
     return {kind: [i for i in items if i["kind"] == kind] for kind in ("uniform", "headgear")}
 
@@ -358,7 +368,7 @@ def _picture_record(uid: int, records: dict, emblem: bool = False) -> tuple[byte
                              if (u := _u64(record.data, o)) in more and more[u][0].file_type == BADGE)
                 return more[_u64(badge, 8)][0].data, 0
             return more[_u64(record.data, base + 665)][0].data, 0
-        return records[_u64(record.data, 53)][0].data, 0
+        return records[_field(record.data, 53)][0].data, 0
     record = more[uid][0]
     if record.file_type == SKIN_DEF:
         return record.data, 440 / 144  # the weapon preview's shape, not the swatch or a banner
@@ -761,7 +771,7 @@ def _weapons(uid: str, cached: list[dict] | None = None, loaded: list | None = N
         model = _weapon_model(weapon[0].data, records)
         if model is None:
             continue
-        name_record = records.get(_u64(weapon[0].data, 423))
+        name_record = records.get(_field(weapon[0].data, 423))  # weapons count their appearances at +4 too
         label = _text(name_record[0].data) if name_record else ""
         bones = sorted({b for binding in read_mesh_bindings(load_asset_payload(model)).values() for b in binding.bone_ids})
         matched = match_skins(label, bones, _skin_names(weapon[0].data, records), skins)  # this weapon's downloads

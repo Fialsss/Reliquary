@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight, CircleHelp, ExternalLink, FolderOpen, FolderTree, HardDrive, Info, LogIn, LogOut, RotateCcw, UserRound } from 'lucide-react'
+import { ChevronRight, CircleHelp, Coffee, ExternalLink, FolderOpen, FolderTree, HardDrive, Info, LogIn, LogOut, RotateCcw, UserRound } from 'lucide-react'
 import type { PageProps } from '../App'
 import { api, bytes, type Settings as Values } from '../api'
 import { Mark } from '../art'
@@ -8,6 +8,7 @@ import { Avatar, useSession } from '../session'
 import { ConfirmButton, PageHead, Segmented, Spinner } from '../ui'
 
 const REPO = 'https://github.com/Fialsss/Reliquary'
+const KOFI = 'https://ko-fi.com/fialss'
 const VERSION = __VERSION__
 
 const SECTIONS = [
@@ -182,6 +183,9 @@ export default function Settings({ status, refresh, setArt, startTour }: PagePro
                     v{VERSION} · GPL-3.0 · © 2026 Fialsss
                   </small>
                 </div>
+                <a className="btn primary small" href={KOFI} target="_blank" rel="noreferrer">
+                  <Coffee size={14} /> {t('about.support')}
+                </a>
                 <a className="btn ghost small" href={REPO} target="_blank" rel="noreferrer">
                   <ExternalLink size={14} /> GitHub
                 </a>

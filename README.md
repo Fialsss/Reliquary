@@ -9,6 +9,7 @@
     <img src="https://img.shields.io/badge/Windows-0b0b0d?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
     <img src="https://img.shields.io/badge/early%20preview-ffb347?style=for-the-badge" alt="Early preview" />
     <img src="https://img.shields.io/badge/GPL--3.0%20%2B%20attribution-3ddc97?style=for-the-badge" alt="GPL-3.0 with attribution" />
+    <a href="https://ko-fi.com/fialss"><img src="https://img.shields.io/badge/Ko--fi-support-ff5e5b?style=for-the-badge&logo=kofi&logoColor=white" alt="Support on Ko-fi" /></a>
   </p>
   <p><a href="README.it.md">Leggi in italiano</a></p>
   <img src="docs/reliquary.gif" width="820" alt="Reliquary: operators, weapon skins and charms" />
@@ -147,6 +148,12 @@ The window never talks to the network or the disk directly. Every action is a re
 - It does not bundle Oodle, which is proprietary. It ships **ooz** instead, an open-source decoder for the same compression, checked to give identical output on the current game files.
 - It doesn't ship season artwork: the app loads it at runtime from the Rainbow Six Fandom wiki. The screenshots in this README show that artwork, © Ubisoft.
 - Extracted assets belong to Ubisoft. Use them for personal renders and fan art, and don't redistribute them.
+
+## Support
+
+Reliquary is free and always will be. If it brought back some good memories, you can buy me a coffee:
+
+<a href="https://ko-fi.com/fialss"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" /></a>
 
 ## Credits
 

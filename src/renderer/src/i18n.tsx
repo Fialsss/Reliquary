@@ -376,6 +376,7 @@ const en: Record<string, string> = {
   'setting.language': 'Language',
   'help.label': 'Help',
   'help.tour': 'Show the guide again',
+  'about.support': 'Support on Ko-fi',
   'about.body': 'Reliquary is free software under GPL-3.0. It ships no game files: everything is read from your install or from Steam with your own account.',
 }
 
@@ -755,6 +756,7 @@ const it: Record<string, string> = {
   'setting.language': 'Lingua',
   'help.label': 'Aiuto',
   'help.tour': 'Rivedi la guida',
+  'about.support': 'Sostienimi su Ko-fi',
   'about.body': "Reliquary è software libero sotto GPL-3.0. Non contiene file del gioco: tutto viene letto dalla tua installazione o da Steam con il tuo account.",
 }
 

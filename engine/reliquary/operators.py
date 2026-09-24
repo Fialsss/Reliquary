@@ -150,12 +150,13 @@ def _prepared() -> dict:
 
 
 def _signature() -> str:
-    """What the prepared data comes from: the game build, its shop list and its downloads."""
-    from . import catalog, dcache
+    """What the prepared data comes from: the game build, its shop list, its downloads and the old builds there are."""
+    from . import catalog, dcache, retired
 
     files = (_game() / "datapc64.forge", catalog._path())
     cache = dcache.cache_root()
-    return ":".join(str(f.stat().st_mtime_ns) if f.is_file() else "0" for f in files) + ":" + (dcache._signature(cache) if cache.is_dir() else "")
+    return (":".join(str(f.stat().st_mtime_ns) if f.is_file() else "0" for f in files) + ":"
+            + (dcache._signature(cache) if cache.is_dir() else "") + ":" + json.dumps([retired.stamp(b) for b in retired.builds()]))
 
 
 @method("operators.status")
@@ -178,7 +179,7 @@ def build_index() -> dict:
     every picture to disk. After that nothing loads piece by piece. The first run takes several minutes; after a
     game update or new downloads it runs again and only does what's new."""
     from src.database import index_archive
-    from . import catalog, dcache
+    from . import catalog, dcache, retired
 
     game = _game()
     if not _busy.acquire(blocking=False):
@@ -194,12 +195,13 @@ def build_index() -> dict:
                 print(f"Index failed for {archive.name}: {error}", file=sys.stderr)
                 failed.append(archive.name)
         cached = dcache.catalog()  # read once for every operator below
+        loaded = retired.loaded(announce=True)  # old builds set in Settings, read once: their retired skins (Glacier…)
         roster, arsenal, wanted = list_operators(), {}, []
         for done, operator in enumerate(roster):
             emit("operators.progress", {"step": "data", "done": done, "total": len(roster), "file": operator["name"]})
             wanted += [operator["uid"], f"{operator['uid']}.emblem"]
             try:
-                arsenal[operator["uid"]] = _weapons(operator["uid"], cached)
+                arsenal[operator["uid"]] = _weapons(operator["uid"], cached, loaded)
                 everything = cosmetics(operator["uid"])
             except Exception as error:  # one unreadable operator shouldn't cost the whole run: its page works it out live
                 print(f"Prepare skipped {operator['name']}: {error}", file=sys.stderr)
@@ -714,7 +716,16 @@ def _weapon_gltf(model: str, magazine: str, skin: str, folder: Path) -> None:
     from src.gltf import write_gltf
     from . import dcache
 
-    roles = (_installed_textures(skin, folder) if skin.startswith(INSTALLED) else dcache.textures(skin, folder)) if skin else {}
+    from . import retired
+
+    if not skin:
+        roles = {}
+    elif skin.startswith(INSTALLED):
+        roles = _installed_textures(skin, folder)
+    elif skin.startswith(retired.OLD):
+        roles = retired.textures(skin, folder)
+    else:
+        roles = dcache.textures(skin, folder)
     write_gltf(int(model, 16), _weapon_parts(model), folder, **roles)
     _add_magazine(folder, magazine, roles)
 
@@ -725,18 +736,19 @@ def weapons(uid: str) -> list[dict]:
     return _prepared().get("weapons", {}).get(uid) or _weapons(uid)
 
 
-def _weapons(uid: str, cached: list[dict] | None = None) -> list[dict]:
+def _weapons(uid: str, cached: list[dict] | None = None, loaded: list | None = None) -> list[dict]:
     """The operator's weapons (loadout slots), each with every skin the game has for it (the catalog), `file` on
     the ones that can be exported (downloaded by the game, or installed with it). cached: the download cache's
     documents, when the caller has read them already."""
     from src.model import load_asset_payload, read_mesh_bindings
-    from . import catalog, dcache
+    from . import catalog, dcache, retired
 
     operator = _records().get(int(uid, 16))
     if not operator or not _database().is_file():
         return []
     records = _more_records()
     skins = [e for e in (dcache.catalog() if cached is None else cached) if e["kind"] == "skin"]
+    loaded = retired.loaded() if loaded is None else loaded  # the old builds, read once for all this operator's weapons
     data = operator[0].data
     base = 8 + struct.unpack_from("<I", data, 4)[0] * 8
     out, seen = [], set()
@@ -754,10 +766,26 @@ def _weapons(uid: str, cached: list[dict] | None = None) -> list[dict]:
         bones = sorted({b for binding in read_mesh_bindings(load_asset_payload(model)).values() for b in binding.bone_ids})
         matched = match_skins(label, bones, _skin_names(weapon[0].data, records), skins)  # this weapon's downloads
         unique = list({s["material"] + s["name"]: s for s in matched}.values())
+        old = retired.for_weapon(_body_meshes(model), loaded) if loaded else []  # retired skins that fit this mesh
         out.append({"uid": f"{weapon_uid:016X}", "name": label.replace("Name", "").strip(), "model": f"{model.uid:016X}",
                     "magazine": _magazine(weapon[0].data, records), "code": unique[0]["code"] if unique else "",
-                    "skins": catalog.weapon_skins(weapon[0].data, records, unique), "sights": _sights(weapon[0].data, records)})
+                    "skins": catalog.weapon_skins(weapon[0].data, records, unique, old), "sights": _sights(weapon[0].data, records)})
     return out
+
+
+def _body_meshes(model) -> set[int]:
+    """The uids of a weapon model's meshes (its own bundle's graph), without decoding them."""
+    from src.cli import _load_database_model_index
+    from src.model import resolve_geometry_records
+
+    graph = model.archive.with_suffix(".depgraphbin")
+    for children in ((_read_children(str(graph), graph.stat().st_mtime_ns),) if graph.is_file() else ()) + (_children(),):
+        try:
+            index = _load_database_model_index(_database(), model.uid, children)
+            return {record.uid for record in resolve_geometry_records(model.uid, children, index)}
+        except ValueError:  # no meshes listed under it in this graph
+            continue
+    return set()
 
 
 _list_weapons = weapons  # `pack` takes a `weapons` argument, which hides the function there
@@ -772,7 +800,7 @@ def pack(uid: str, items: list[str], weapons: list[dict] | None = None, charms: 
     items: uniform and headgear uids; weapons: [{"uid", "skins": [skin ids, "" = no skin], "sights": [sight uids]}];
     charms: charm ids. Skins and charms the game hasn't downloaded yet are left out and counted in "skipped".
     """
-    from . import catalog, dcache
+    from . import catalog, dcache, retired
 
     _game()
     if not _database().is_file():
@@ -800,8 +828,9 @@ def pack(uid: str, items: list[str], weapons: list[dict] | None = None, charms: 
         title = weapon["name"] or weapon["code"] or f"Weapon {row + 1}"
         skins = {s["id"]: s for s in weapon["skins"]}
         for skin in choice.get("skins") or ([] if choice.get("sights") else [""]):
-            if skin and not skins.get(skin, {}).get("file"):
-                skipped += 1  # not downloaded by the game yet
+            file = skins.get(skin, {}).get("file", "")
+            if skin and (not file or (file.startswith(retired.OLD) and not retired.available(file))):
+                skipped += 1  # not downloaded by the game yet, or its old build is gone from Settings
                 continue
             name = skins[skin]["name"] if skin else ""
             # short, readable folders: Windows (and Blender with it) can't open paths past 260 characters

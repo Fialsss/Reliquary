@@ -3682,3 +3682,13 @@ p {
   background: var(--bad);
   border-color: var(--bad);
 }
+/* old builds: one line per folder, the add button under them */
+.setting-control.old-builds {
+  flex-direction: column;
+  align-items: flex-end;
+}
+.old-build {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}

@@ -18,6 +18,7 @@ import gzip
 import json
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 from . import operators
@@ -135,10 +136,28 @@ def installed(candidates: dict[int, list[int]], types: set[int]) -> dict[int, st
     return {key: f"{operators.INSTALLED}{uid:016X}" for key, uid in found.items() if uid}
 
 
-def weapon_skins(weapon: bytes, records: dict, docs: list[dict]) -> list[dict]:
+def join_old(skins: list[dict], shows: dict[str, set[int]], old: list[tuple[set[int], str, str, str]]) -> None:
+    """Give the skins nothing else can export the retired look that shows the same icon: an old look (its icon uids,
+    file, season label, colour sheet) goes to the one catalog skin whose definition names one of its icons (shows:
+    skin id → the uids its definition names); when two skins would fit, neither gets it. A colour sheet that lands
+    on two different skins is a tint-only variant (Masonry Ruby, Cyan, Topaz…: the colour lives in a tint the
+    exported textures can't carry), so none of those skins gets it."""
+    given: dict[str, tuple[str, str, str]] = {}
+    for icons, file, label, sheet in old:
+        fits = [s for s in skins if shows.get(s["id"], set()) & icons]
+        if len(fits) == 1 and not fits[0]["file"] and fits[0]["id"] not in given:
+            given[fits[0]["id"]] = (file, label, sheet)
+    skins_per_sheet = Counter(sheet for _, _, sheet in given.values())
+    for skin in skins:
+        if skin["id"] in given and skins_per_sheet[given[skin["id"]][2]] == 1:
+            skin["file"], skin["source"] = given[skin["id"]][:2]
+
+
+def weapon_skins(weapon: bytes, records: dict, docs: list[dict], old: list | None = None) -> list[dict]:
     """Every skin of a weapon (its skin entries → catalog item + skin definition with the preview); `file` for the
     ones that can be exported: in the download cache (docs: the cache documents already matched to this weapon),
-    or installed with the game (the entry's appearance names a material or a model of the game's mtx archives)."""
+    installed with the game (the entry's appearance names a material or a model of the game's mtx archives), or
+    retired but still in an old build set in Settings (old: from retired.for_weapon, met through the skin's icons)."""
     from src.material import CURRENT_MATERIAL
     from src.operator_registry import APPEARANCE_TYPE
 
@@ -163,8 +182,11 @@ def weapon_skins(weapon: bytes, records: dict, docs: list[dict]) -> list[dict]:
     # a camo pattern's document is named after the weapon's material: its pattern is in the name (Aloha B)
     attach(out, docs, lambda d: _tokens(d["material"], d["name"] if d.get("pattern") else "") - _tokens(d["class"], d["code"]))
     game = installed(looks, {CURRENT_MATERIAL, *operators.MODEL_TYPES})
-    return sorted(({k: v for k, v in s.items() if k != "_words"} | {"file": s.get("file") or game.get(int(s["id"], 16), "")} for s in out),
-                  key=lambda s: s["name"].lower())
+    for skin in out:
+        skin["file"] = skin.get("file") or game.get(int(skin["id"], 16), "")
+    if old:
+        join_old(out, {s["id"]: set(_uids(records[int(s["icon"], 16)][0].data)) for s in out if s["icon"]}, old)
+    return sorted(({k: v for k, v in s.items() if k != "_words"} for s in out), key=lambda s: s["name"].lower())
 
 
 @method("catalog.charms")

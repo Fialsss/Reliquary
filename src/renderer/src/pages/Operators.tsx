@@ -9,9 +9,9 @@ import { PageHead, Segmented, Spinner } from '../ui'
 
 type Read = { state: 'waiting' | 'reading' | 'ok' | 'outdated' | 'failed'; operators?: Operator[]; error?: string }
 type Index = { indexed: boolean; stale: boolean; bytes: number; exports: string; busy: boolean }
-type Progress = { step: 'index' | 'cache' | 'data' | 'pictures' | 'export' | 'blend' | 'done'; uid?: string; done: number; total: number; file: string }
+type Progress = { step: 'index' | 'cache' | 'old' | 'data' | 'pictures' | 'export' | 'blend' | 'done'; uid?: string; done: number; total: number; file: string }
 // the steps of Prepare as parts of one bar: the pictures are most of the first run
-const PREPARE: Record<string, [number, number]> = { index: [0, 0.15], cache: [0.15, 0.25], data: [0.25, 0.35], pictures: [0.35, 1] }
+const PREPARE: Record<string, [number, number]> = { index: [0, 0.12], cache: [0.12, 0.2], old: [0.2, 0.25], data: [0.25, 0.35], pictures: [0.35, 1] }
 type Cosmetic = { uid: string; kind: 'uniform' | 'headgear'; default: boolean; label: string; season: string; rarity: string }
 type Cosmetics = { uniform: Cosmetic[]; headgear: Cosmetic[] }
 // Prepare outlives the page: leaving and coming back finds it still running. generation goes up when it finishes,
@@ -284,7 +284,7 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
 
 type Side = 'all' | 'attack' | 'defense'
 
-type Skin = { id: string; icon: string; name: string; season: string; rarity: string; universal: boolean; file: string }
+type Skin = { id: string; icon: string; name: string; season: string; rarity: string; universal: boolean; file: string; source?: string } // source: the old build's season, for retired skins
 type Sight = { uid: string; name: string; model: string }
 type Weapon = { uid: string; name: string; model: string; magazine: string; code: string; skins: Skin[]; sights: Sight[] }
 type Charm = { id: string; icon: string; name: string; season: string; rarity: string; family: string; rank: string; file: string }
@@ -645,7 +645,7 @@ function OperatorPack({
                   const on = skins[w.uid] ?? new Set<string>()
                   const pick = (id: string) => setSkins({ ...skins, [w.uid]: flip(on, id) })
                   const skinCard = (s: Skin) =>
-                    card(s.id, s.icon, on.has(s.id), () => pick(s.id), { caption: s.name, sub: s.season, rarity: s.rarity, shape: 'skin', missing: !s.file })
+                    card(s.id, s.icon, on.has(s.id), () => pick(s.id), { caption: s.name, sub: s.season, rarity: s.rarity, shape: 'skin', missing: !s.file, tag: s.source })
                   const groups = skinGroups(w)
                   return (
                     <section key={w.uid} className="weapon-block">

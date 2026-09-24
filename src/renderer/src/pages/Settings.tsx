@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight, CircleHelp, Coffee, ExternalLink, FolderOpen, FolderTree, HardDrive, Info, LogIn, LogOut, RotateCcw, UserRound } from 'lucide-react'
+import { ChevronRight, CircleHelp, Coffee, ExternalLink, FolderOpen, FolderPlus, FolderTree, HardDrive, Info, LogIn, LogOut, RotateCcw, UserRound, X } from 'lucide-react'
 import type { PageProps } from '../App'
 import { api, bytes, type Settings as Values } from '../api'
 import { Mark } from '../art'
@@ -143,6 +143,7 @@ export default function Settings({ status, refresh, setArt, startTour }: PagePro
                 </div>
               )
             })}
+          {section === 'paths' && <OldBuilds list={values?.old_builds ?? []} save={save} />}
 
           {section === 'storage' && <Storage />}
 
@@ -218,6 +219,44 @@ export default function Settings({ status, refresh, setArt, startTour }: PagePro
             </>
           )}
         </section>
+      </div>
+    </div>
+  )
+}
+
+/** Folders of old seasons (from the Vault or another launcher): retired skins like Glacier come from them. */
+function OldBuilds({ list, save }: { list: string[]; save: (changes: Partial<Values>) => void }) {
+  const { t } = useI18n()
+  // the ones the engine can use (there, with their registry): the others get a red dot
+  const [usable, setUsable] = useState<string[]>([])
+  useEffect(() => {
+    api.call<string[]>('retired.builds').then(setUsable).catch(() => setUsable([]))
+  }, [list])
+  const add = async () => {
+    const picked = await api.pick('folder')
+    if (picked && !list.includes(picked)) save({ old_builds: [...list, picked] })
+  }
+  return (
+    <div className="setting">
+      <div className="setting-label">
+        <b>{t('setting.old_builds')}</b>
+        <small>{t('setting.old_builds.hint')}</small>
+      </div>
+      <div className="setting-control old-builds">
+        {list.map((path) => (
+          <div key={path} className="old-build">
+            <div className={`path-field${usable.includes(path) ? ' ok' : ' missing'}`} data-tip={usable.includes(path) ? path : t('setting.buildUnusable')}>
+              <i />
+              <span className="mono">{path}</span>
+            </div>
+            <button className="btn ghost small icon" onClick={() => save({ old_builds: list.filter((p) => p !== path) })} data-tip={t('setting.removeBuild')}>
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+        <button className={`btn small ${list.length ? 'ghost' : 'primary'}`} onClick={add}>
+          <FolderPlus size={14} /> {t('setting.addBuild')}
+        </button>
       </div>
     </div>
   )

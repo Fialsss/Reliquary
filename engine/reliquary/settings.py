@@ -18,6 +18,7 @@ DEFAULTS = {
     "library": str(HOME / "library"),
     "exports": str(Path.home() / "Documents" / "Reliquary"),
     "steam_user": "",
+    "old_builds": [],  # folders of old builds (Forge v29) that retired skins come from
 }
 
 _lock = threading.Lock()

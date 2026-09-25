@@ -44,6 +44,14 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(files[0]["category"], "textures")
         self.assertEqual(files[0]["size"], 9176481792)
         self.assertEqual(files[2]["category"], "data")
+        self.assertTrue(all(f["reliquary"] for f in files))  # textures, the ondemand nodes and the graphs
+
+    def test_for_reliquary_leaves_the_maps_out(self):
+        from reliquary.vault import _for_reliquary
+
+        self.assertEqual([_for_reliquary(n) for n in ("datapc64.forge", "datapc64_merged_bnk_011409403_mesh.forge",
+                                                      "datapc64_pvp01_house_v2.forge", "datapc64_pvp01_house_v2_set01_bnk_gidata.forge")],
+                         [True, True, False, False])
 
 
 

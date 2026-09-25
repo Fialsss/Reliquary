@@ -35,7 +35,7 @@ sys.path.insert(0, str(PARSER))
 TEXTURE_MAP_SPEC = 0x4F09331E
 ICON_BOX = (1024, 1024)  # the pictures at their own size: portraits 436x736, skin previews 440x144, charms 268x220…
 _busy = threading.Lock()  # indexing and exporting both read the whole game: one at a time
-PREPARED = 2  # what Prepare makes: bumped when that changes (2: cosmetics with two appearances), so it runs again
+PREPARED = 9  # what Prepare makes: bumped when that changes (2: two-appearance cosmetics, 3: old charms, 4: old sights, 5: old meshes, 6: every weapon choice, 7: Pro League S1 names, 8: ranked charm names, 9: the Holo A on a riser)
 _types_lock = threading.Lock()  # guards the parser's module-level KEEP_TYPES while a reader uses it
 
 
@@ -212,7 +212,7 @@ def build_index() -> dict:
                 continue
             wanted += [i["uid"] for kind in ("uniform", "headgear") for i in everything[kind]]
         try:
-            all_charms = catalog.find_charms(cached)
+            all_charms = catalog.find_charms(cached, loaded)
         except Exception as error:  # the Charms tab works them out live
             print(f"Prepare skipped the charms: {error}", file=sys.stderr)
             all_charms = []
@@ -597,8 +597,28 @@ def _has_meshes(model) -> bool:
     return bool(_children().get(model.uid)) or (own.is_file() and bool(_read_children(str(own), own.stat().st_mtime_ns).get(model.uid)))
 
 
-def _sights(weapon: bytes, records: dict) -> list[dict]:
-    """A weapon's sights, one per model. Variants of one sight (three red dots…) get A, B, C as in the game."""
+HOLO_A = "0000003EA76C8D23"  # today's Holo A: its body and lens meshes are on no PC, the old build has the sight
+HOLO_A_MESHES = {0x619E8004C, 0x268AC367E6}
+SUB_MESH = bytes.fromhex("8f664fa30100")  # the sub-object through which a model names one of its meshes
+
+
+@functools.lru_cache(maxsize=512)
+def _on_riser(model: int) -> bool:
+    """Whether a sight model is the Holo A on a riser (SPAS-15, Bearing 9): it names the Holo A's own meshes, plus a
+    riser of its own that is on the PC and sits below the sight's base, in the same space."""
+    from src.database import load_asset_index
+    from src.model import load_asset_payload
+
+    record = load_asset_index(_database(), {model}).primary(model)
+    payload = load_asset_payload(record) if record else b""
+    named = {_u64(payload, m.end()) for m in re.finditer(re.escape(SUB_MESH), payload) if m.end() + 8 <= len(payload)}
+    return f"{model:016X}" != HOLO_A and HOLO_A_MESHES <= named
+
+
+def _sights(weapon: bytes, records: dict, old: dict | None = None) -> list[dict]:
+    """A weapon's sights, one per model. Variants of one sight (three red dots…) get A, B, C as in the game. A model
+    with no meshes on disk (the Holo A) is offered when an old build has them (old: retired.sights), with its file;
+    the Holo A on a riser too ("riser": the pack exports the game's riser with the old sight on it)."""
     out, models = [], set()
     for uid in dict.fromkeys(_u64(weapon, o) for o in range(len(weapon) - 7)):
         sight = records.get(uid)
@@ -610,14 +630,19 @@ def _sights(weapon: bytes, records: dict) -> list[dict]:
         models.add(model.uid)
         data = sight[0].data
         ui = next((records[u][0].data for o in range(len(data) - 7) if (u := _u64(data, o)) in records and records[u][0].file_type == SIGHT_UI), b"")
-        out.append({"uid": f"{uid:016X}", "name": _sight_name(_text(ui)), "model": f"{model.uid:016X}", "meshes": _has_meshes(model)})
+        sight = {"uid": f"{uid:016X}", "name": _sight_name(_text(ui)), "model": f"{model.uid:016X}", "meshes": _has_meshes(model)}
+        if not sight["meshes"] and (found := (old or {}).get(sight["model"])):
+            sight["meshes"], sight["file"], sight["source"] = True, *found
+        elif (found := (old or {}).get(HOLO_A)) and "holo" in sight["name"].lower() and _on_riser(model.uid):
+            sight["meshes"], sight["file"], sight["source"], sight["riser"] = True, *found, True
+        out.append(sight)
     names = Counter(s["name"] for s in out)
     seen: Counter = Counter()
     for sight in out:
         if sight["name"] and names[sight["name"]] > 1:
             seen[sight["name"]] += 1
             sight["name"] += f" {chr(64 + seen[sight['name']])}"
-    # lettered first, so Holo B stays Holo B when Holo A (no exportable mesh) isn't offered
+    # lettered first, so Holo B stays Holo B when Holo A (no exportable mesh, and no old build) isn't offered
     return sorted(({k: v for k, v in s.items() if k != "meshes"} for s in out if s["meshes"]), key=lambda s: (not s["name"], s["name"]))
 
 
@@ -723,17 +748,26 @@ def _installed_textures(skin: str, folder: Path) -> dict[str, str]:
 
 def _weapon_gltf(model: str, magazine: str, skin: str, folder: Path) -> None:
     """A weapon as glTF: its installed mesh and magazine, in a skin from the download cache or the game ("" = none)."""
+    from src.database import load_asset_index
     from src.gltf import write_gltf
-    from . import dcache
-
-    from . import retired
+    from . import dcache, retired
 
     if not skin:
         roles = {}
     elif skin.startswith(INSTALLED):
         roles = _installed_textures(skin, folder)
     elif skin.startswith(retired.OLD):
+        # the old sheets fit the old build's UVs: its own body where today's was redone since (OWN_MESH), and its own
+        # magazine whenever it has all of it (most magazines were redone); today's where it doesn't
         roles = retired.textures(skin, folder)
+        record = lambda uid: load_asset_index(_database(), {int(uid, 16)}).primary(int(uid, 16))  # noqa: E731
+        if not skin.endswith(retired.OWN_MESH):
+            write_gltf(int(model, 16), _weapon_parts(model), folder, **roles)
+        elif not retired.weapon_gltf(skin, _body_meshes(record(model)), int(model, 16), folder, roles):
+            raise ValueError(f"the old build of skin {skin} doesn't have this weapon's mesh")
+        if magazine and not retired.weapon_gltf(skin, _body_meshes(record(magazine)), int(magazine, 16), folder, roles):
+            _add_magazine(folder, magazine, roles)
+        return
     else:
         roles = dcache.textures(skin, folder)
     write_gltf(int(model, 16), _weapon_parts(model), folder, **roles)
@@ -747,9 +781,11 @@ def weapons(uid: str) -> list[dict]:
 
 
 def _weapons(uid: str, cached: list[dict] | None = None, loaded: list | None = None) -> list[dict]:
-    """The operator's weapons (loadout slots), each with every skin the game has for it (the catalog), `file` on
-    the ones that can be exported (downloaded by the game, or installed with it). cached: the download cache's
-    documents, when the caller has read them already."""
+    """The operator's weapons, each with every skin the game has for it (the catalog), `file` on the ones that can
+    be exported (downloaded by the game, or installed with it). cached: the download cache's documents, when the
+    caller has read them already. The loadout table at base+32 names only each slot's default weapon (Ash's R4-C
+    and 5.7 USG); the choices (G36C, M45 MEUSOC) are in lists further on, in slot order: every weapon the record
+    names, in the order it last names them."""
     from src.model import load_asset_payload, read_mesh_bindings
     from . import catalog, dcache, retired
 
@@ -761,13 +797,10 @@ def _weapons(uid: str, cached: list[dict] | None = None, loaded: list | None = N
     loaded = retired.loaded() if loaded is None else loaded  # the old builds, read once for all this operator's weapons
     data = operator[0].data
     base = 8 + struct.unpack_from("<I", data, 4)[0] * 8
-    out, seen = [], set()
-    for slot in range(2, 23):
-        weapon_uid = _u64(data, base + 32 + slot * 37 + 4)
-        weapon = records.get(weapon_uid)
-        if weapon_uid in seen or not weapon or weapon[0].file_type != WEAPON:
-            continue
-        seen.add(weapon_uid)
+    last = {u: o for o in range(base, len(data) - 7) if (u := _u64(data, o)) in records and records[u][0].file_type == WEAPON}
+    out = []
+    for weapon_uid in sorted(last, key=last.get):
+        weapon = records[weapon_uid]
         model = _weapon_model(weapon[0].data, records)
         if model is None:
             continue
@@ -777,9 +810,10 @@ def _weapons(uid: str, cached: list[dict] | None = None, loaded: list | None = N
         matched = match_skins(label, bones, _skin_names(weapon[0].data, records), skins)  # this weapon's downloads
         unique = list({s["material"] + s["name"]: s for s in matched}.values())
         old = retired.for_weapon(_body_meshes(model), loaded) if loaded else []  # retired skins that fit this mesh
+        old_sights = retired.sights(loaded) if loaded else {}
         out.append({"uid": f"{weapon_uid:016X}", "name": label.replace("Name", "").strip(), "model": f"{model.uid:016X}",
                     "magazine": _magazine(weapon[0].data, records), "code": unique[0]["code"] if unique else "",
-                    "skins": catalog.weapon_skins(weapon[0].data, records, unique, old), "sights": _sights(weapon[0].data, records)})
+                    "skins": catalog.weapon_skins(weapon[0].data, records, unique, old), "sights": _sights(weapon[0].data, records, old_sights)})
     return out
 
 
@@ -853,12 +887,21 @@ def pack(uid: str, items: list[str], weapons: list[dict] | None = None, charms: 
         for column, sight in enumerate(sights[s] for s in choice.get("sights") or [] if s in sights):
             label = sight["name"] or sight["uid"]
             folder = target / "sights" / _folder_name(title)[:40] / _folder_name(label)[:40]
-            jobs.append(("model", folder, int(sight["model"], 16)))
+            file = sight.get("file", "")
+            if file and not retired.available(file):
+                skipped += 1  # its old build is gone from Settings
+                continue
+            if file and sight.get("riser"):
+                # the game's riser first (where packs before 1.3 put it alone), then the 2017 sight on it, apart
+                jobs += [("model", folder, int(sight["model"], 16)), ("oldsight", folder / "2017", file)]
+            else:
+                jobs.append(("oldsight", folder, file) if file else ("model", folder, int(sight["model"], 16)))
             manifest["items"].append({"kind": "sight", "group": title, "name": f"{title} · {label}", "folder": str(folder),
                                       "offset": [1.25 + column * 0.12, 0.0, 1.3 - row * 0.3]})
     known_charms = {c["id"]: c for c in catalog.charms()} if charms else {}
-    ready = [known_charms[c] for c in charms or [] if known_charms.get(c, {}).get("file")]
-    skipped += len(charms or []) - len(ready)
+    ready = [known_charms[c] for c in charms or [] if (f := known_charms.get(c, {}).get("file"))
+             and not (f.startswith(retired.OLD_CHARM) and not retired.available(f))]
+    skipped += len(charms or []) - len(ready)  # not downloaded by the game yet, or their old build is gone
     for column, charm in enumerate(ready):
         folder = target / "charms" / _folder_name(charm["name"])[:40]
         file = charm["file"]
@@ -878,6 +921,10 @@ def pack(uid: str, items: list[str], weapons: list[dict] | None = None, charms: 
                     _export_model(what, children, _database(), folder / f"{what:016X}")
                 elif kind == "weapon":
                     _weapon_gltf(*what, folder)
+                elif kind == "oldsight":
+                    retired.sight_gltf(what, folder)
+                elif what.startswith(retired.OLD_CHARM):
+                    retired.charm_gltf(what, folder)
                 else:
                     dcache.charm_gltf(what, folder)
             except (FileNotFoundError, ValueError, KeyError, struct.error) as error:

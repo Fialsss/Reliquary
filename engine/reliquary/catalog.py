@@ -18,7 +18,7 @@ import gzip
 import json
 import re
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from . import operators
@@ -26,7 +26,7 @@ from .rpc import method
 
 RANKS = ("copper", "bronze", "silver", "gold", "platinum", "emerald", "diamond", "champion")
 FAMILIES = (  # a charm's kind, from its dev name and tags; the first that fits
-    ("ranked", r"reward|ranked|seasonal_(?:rewards?_)?(?:" + "|".join(RANKS) + ")"),
+    ("ranked", r"reward|ranked|legacy_go_rank|seasonal_(?:rewards?_)?(?:" + "|".join(RANKS) + ")"),
     ("battlepass", r"battle_?pass|(?:^|[._])bp_|premium_?node|themedcontent"),
     ("esports", r"e_?sports?|pro_?league|pro_?teams?|major|invitational|(?:^|[._])si_|r6_?cup|go4r6"),
     ("chibi", r"chibi"),
@@ -59,15 +59,30 @@ def items() -> dict[int, dict]:
 
 def season(item: dict) -> str:
     """Y3S2 from the item's tags, else from its dev name (Y1_MC → Y1)."""
+    if re.match(r"charm_legacy_go_rank_", item["nameId"], re.I):
+        # Black Ice's ranked charms: "Unscheduled" in the shop, plain Rank-Copper… Rank-Diamond tokens in 2017's
+        # builds, where every later season's ranked charms carry the season's name (Dust Line, Skull Rain…)
+        return "Y1S1"
     tag = next((t.upper() for t in item.get("tags", []) if re.fullmatch(r"[Yy]\d+[Ss]\d", t)), "")
     if tag:
         return tag
-    found = re.match(r"Y(\d+)(?:S(\d))?", (item["nameId"].split(".") + [""])[1], re.I)
+    # Y1_MC → Y1 from the second part; Charm_Y4S3_GO_SeasonReward_Gold ("Unscheduled" in the shop) → Y4S3
+    found = re.match(r"Y(\d+)(?:S(\d))?", (item["nameId"].split(".") + [""])[1], re.I) or re.search(r"(?:^|_)Y(\d+)S(\d)(?=_)", item["nameId"])
     return (f"Y{found[1]}S{found[2]}" if found[2] else f"Y{found[1]}") if found else ""
+
+
+# ponytail: the game's own names are in its localization tables, which Reliquary doesn't read yet (a skin definition
+# names its string, 65000000_0003134C for the MP5's). Until then, dev names that are plainly wrong get the game's:
+# 2016's Pro League Season 1 camos are "GOLD_DUST" in the shop, the real Gold Dust's name (the grades as the
+# game shows them on the 556xi and the MP5; the 591A1 is the third)
+PRO_LEAGUE_S1 = {"W_SG_591A1": 1, "W_SMG_MP5MLI": 2, "W_AR_Sig556": 3}
 
 
 def name(item: dict) -> str:
     """LIBERTY_BELL → Liberty Bell; items without a display key get their dev name, tidied."""
+    if "R6Unique-SPECIAL.GOLD_DUST" in item["nameId"]:
+        grade = next((PRO_LEAGUE_S1[t] for t in item.get("tags", []) if t in PRO_LEAGUE_S1), 0)
+        return f"Pro League S1 Grade {grade}" if grade else "Pro League S1"
     parts = item["nameId"].split(".")
     label = parts[-2] if len(parts) > 1 and re.fullmatch(r"0x[0-9a-f]+", parts[-1], re.I) else parts[-1]
     label = re.sub(r"_?0x[0-9a-f]{6,}$", "", label, flags=re.I)
@@ -93,8 +108,22 @@ def family(item: dict) -> str:
 
 
 def rank(item: dict) -> str:
+    if family(item) == "ranked" and "newrank" in item["nameId"].lower():
+        return "champion"  # Y4S3's SeasonReward_NewRank_TBD: Ember Rise brought the Champion rank
     found = re.search("|".join(RANKS).replace("platinum", "platini?um"), item["nameId"].lower())  # Ubisoft's "Platinium" too
     return found[0].replace("platinium", "platinum") if found and family(item) == "ranked" else ""
+
+
+def _title_ranked(charms: list[dict]) -> None:
+    """Ranked charms the shop names only "Season Reward Gold" or "Reward Gold" take the name their season's others
+    carry (Blood Orchid, Ember Rise, Shifting Tides, Void Edge); a season with none or two (Y4S2) keeps them as is."""
+    titles = defaultdict(set)
+    for c in charms:
+        if c["rank"] and not re.match(r"(?i)(?:season )?reward\b", c["name"]) and c["name"].lower().endswith(c["rank"]):
+            titles[c["season"]].add(c["name"][:-len(c["rank"])].strip())
+    for c in charms:
+        if c["rank"] and re.match(r"(?i)(?:season )?reward\b", c["name"]) and len(titles[c["season"]]) == 1:
+            c["name"] = f"{next(iter(titles[c['season']]))} {c['rank'].capitalize()}"
 
 
 def _tokens(*texts: str) -> set[str]:
@@ -138,10 +167,9 @@ def installed(candidates: dict[int, list[int]], types: set[int]) -> dict[int, st
 
 def join_old(skins: list[dict], shows: dict[str, set[int]], old: list[tuple[set[int], str, str, str]]) -> None:
     """Give the skins nothing else can export the retired look that shows the same icon: an old look (its icon uids,
-    file, season label, colour sheet) goes to the one catalog skin whose definition names one of its icons (shows:
-    skin id → the uids its definition names); when two skins would fit, neither gets it. A colour sheet that lands
-    on two different skins is a tint-only variant (Masonry Ruby, Cyan, Topaz…: the colour lives in a tint the
-    exported textures can't carry), so none of those skins gets it."""
+    file, season label, look: colour sheet and tint) goes to the one catalog skin whose definition names one of its
+    icons (shows: skin id → the uids its definition names); when two skins would fit, neither gets it. Two skins
+    landing on the very same look would come out the same, so one of them would be wrong: neither gets it."""
     given: dict[str, tuple[str, str, str]] = {}
     for icons, file, label, sheet in old:
         fits = [s for s in skins if shows.get(s["id"], set()) & icons]
@@ -195,11 +223,12 @@ def charms() -> list[dict]:
     return operators._prepared().get("charms") or find_charms()
 
 
-def find_charms(cached: list[dict] | None = None) -> list[dict]:
+def find_charms(cached: list[dict] | None = None, loaded: list | None = None) -> list[dict]:
     """Every charm in the game, with its picture (icon: the registry charm), season, rarity, kind and rank;
-    `file` when it can go in a pack: downloaded by the game, or installed with it (a model the charm names).
-    cached: the download cache's documents, when the caller has read them already."""
-    from . import dcache
+    `file` when it can go in a pack: downloaded by the game, installed with it (a model the charm names), or kept by
+    an old build set in Settings (Year 1's: met through the icons the charm's UI record, +62, still names).
+    cached: the download cache's documents, loaded: the old builds, when the caller has read them already."""
+    from . import dcache, retired
 
     docs = [e for e in (dcache.catalog() if cached is None else cached) if e["kind"] == "charm"]
     if not items():  # no catalog yet: the downloaded ones
@@ -212,5 +241,12 @@ def find_charms(cached: list[dict] | None = None) -> list[dict]:
            for goid, item in items().items() if item.get("type") == "Charm"]
     attach(out, docs, lambda d: _tokens(d["material"]))
     game = installed({u: _uids(more[u][0].data) for u in by_item.values()}, set(operators.MODEL_TYPES))
-    return sorted(({k: v for k, v in c.items() if k != "_words"} | {"file": c.get("file") or game.get(int(c["icon"] or "0", 16), "")} for c in out),
-                  key=lambda c: c["name"].lower())
+    old = retired.charms(retired.loaded() if loaded is None else loaded)
+    for charm in out:
+        charm["file"] = charm.get("file") or game.get(int(charm["icon"] or "0", 16), "")
+        ui = more.get(operators._u64(more[int(charm["icon"], 16)][0].data, 62)) if charm["icon"] and old else None
+        found = next((old[i] for i in _uids(ui[0].data) if i in old), None) if ui else None
+        if not charm["file"] and found:
+            charm["file"], charm["source"] = found
+    _title_ranked(out)
+    return sorted(({k: v for k, v in c.items() if k != "_words"} for c in out), key=lambda c: c["name"].lower())

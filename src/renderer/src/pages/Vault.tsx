@@ -115,8 +115,6 @@ function Notice({ text, onClose }: { text: string; onClose?: () => void }) {
   )
 }
 
-const CATEGORIES = ['data', 'textures', 'meshes', 'other'] as const
-
 function SeasonDetail({ season, back, setArt, cover }: { season: Season; back: () => void; setArt: PageProps['setArt']; cover?: string }) {
   const { t } = useI18n()
   const { profile, job, signIn } = useSession()
@@ -180,12 +178,15 @@ function SeasonDetail({ season, back, setArt, cover }: { season: Season; back: (
     next.has(name) ? next.delete(name) : next.add(name)
     setPicked(next)
   }
-  const toggleCategory = (category: DepotFile['category']) => {
-    const names = (files ?? []).filter((f) => f.category === category).map((f) => f.name)
-    const all = names.every((n) => picked.has(n))
-    const next = new Set(picked)
-    names.forEach((n) => (all ? next.delete(n) : next.add(n)))
-    setPicked(next)
+  // what to download by what it's for, with its size: nobody new knows what Data or Meshes stand for
+  const presets: [string, (f: DepotFile) => boolean][] = [
+    ['vault.forReliquary', (f) => f.reliquary],
+    ['vault.wholeBuild', () => true]
+  ]
+  // a second click on the preset already picked clears the selection
+  const choose = (test: (f: DepotFile) => boolean) => {
+    const names = (files ?? []).filter(test).map((f) => f.name)
+    setPicked(names.length === picked.size && names.every((n) => picked.has(n)) ? new Set() : new Set(names))
   }
 
   const size = (files ?? []).filter((f) => picked.has(f.name)).reduce((sum, f) => sum + f.size, 0)
@@ -274,12 +275,13 @@ function SeasonDetail({ season, back, setArt, cover }: { season: Season; back: (
             <div>
               <div className="label">{t('vault.archives')}</div>
               {files && <small>{t('vault.fileCount', { n: files.length })}</small>}
+              {files && <small className="presets-hint">{t('vault.presetHint')}</small>}
             </div>
             {files && (
               <div className="presets">
-                {CATEGORIES.filter((c) => files.some((f) => f.category === c)).map((c) => (
-                  <button key={c} className="btn ghost small" onClick={() => toggleCategory(c)}>
-                    {t(`cat.${c}`)}
+                {presets.map(([key, test]) => (
+                  <button key={key} className="btn ghost small" onClick={() => choose(test)}>
+                    {t(key)} · {bytes(files.filter(test).reduce((sum, f) => sum + f.size, 0))}
                   </button>
                 ))}
               </div>

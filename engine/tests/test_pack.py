@@ -76,6 +76,19 @@ class NamesTest(unittest.TestCase):
         self.assertEqual((catalog.name(glory), catalog.season(glory)), ("Glory", "Y1"))
         major = item("weapon_charms_universal.Y5S2.Drop_TBD_02.SIX_MAJOR_USA_COPPER_2020", "Y5S2")
         self.assertEqual((catalog.family(major), catalog.rank(major)), ("esports", ""))
+        grade = item("weapon_skins.Y1_MC.MP5.EsportReinit_VisualCustomisation-W_SMG_MP5MLI-GIGN-R6Unique-SPECIAL.GOLD_DUST", "W_SMG_MP5MLI", "Y1MC")
+        self.assertEqual((catalog.name(grade), catalog.family(grade)), ("Pro League S1 Grade 2", "esports"))
+        gold = item("weapon_skins.Y1S4.SASG-12.Esports_SASG-12.GOLD_DUST", "Y1S4")
+        self.assertEqual(catalog.name(gold), "Gold Dust")
+        ember = item("Charm_Y4S3_GO_SeasonReward_Gold_0x0000003211fb1445", "Unscheduled")
+        self.assertEqual((catalog.season(ember), catalog.rank(ember)), ("Y4S3", "gold"))
+        self.assertEqual(catalog.rank(item("Charm_Y4S3_GO_SeasonReward_NewRank_TBD_0x0000003211fb1415", "Unscheduled")), "champion")
+        charms = [{"name": "Ember Rise Copper", "rank": "copper", "season": "Y4S3"}, {"name": "Season Reward Gold", "rank": "gold", "season": "Y4S3"},
+                  {"name": "Season Reward Gold", "rank": "gold", "season": "Y10S1"}]
+        catalog._title_ranked(charms)
+        self.assertEqual([c["name"] for c in charms], ["Ember Rise Copper", "Ember Rise Gold", "Season Reward Gold"])
+        black_ice = item("Charm_Legacy_GO_Rank_Copper_0x000000088caa60e7", "Unscheduled", "rarity_uncommon")
+        self.assertEqual((catalog.season(black_ice), catalog.family(black_ice), catalog.rank(black_ice)), ("Y1S1", "ranked", "copper"))
 
     def test_cache_documents_meet_their_catalog_items(self):
         from reliquary import catalog

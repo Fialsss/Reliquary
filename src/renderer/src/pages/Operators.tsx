@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeft, Box, Check, ChevronDown, ChevronRight, CloudDownload, Cpu, Crosshair, Database, Focus, FolderOpen, FolderSearch, Gem, HardHat, Package, RefreshCw, Search, Shirt, Users, X } from 'lucide-react'
+import { ArrowLeft, Box, Check, ChevronDown, ChevronRight, CloudDownload, Cpu, Database, FolderOpen, FolderSearch, Package, RefreshCw, Search, Users, X } from 'lucide-react'
 import type { PageProps } from '../App'
 import { api, bytes, useEngineEvent, type Operator } from '../api'
 import { hueOf, Shards } from '../art'
@@ -311,13 +311,12 @@ export default function Operators({ go, setArt, status, refresh }: PageProps) {
 type Side = 'all' | 'attack' | 'defense'
 
 type Skin = { id: string; icon: string; name: string; season: string; rarity: string; universal: boolean; file: string; source?: string } // source: the old build's season, for retired skins
-type Sight = { uid: string; name: string; model: string }
+type Sight = { uid: string; name: string; model: string; source?: string } // source: the old build of a retired one (Holo A)
 type Weapon = { uid: string; name: string; model: string; magazine: string; code: string; skins: Skin[]; sights: Sight[] }
-type Charm = { id: string; icon: string; name: string; season: string; rarity: string; family: string; rank: string; file: string }
+type Charm = { id: string; icon: string; name: string; season: string; rarity: string; family: string; rank: string; file: string; source?: string }
 type Tab = 'uniform' | 'headgear' | 'weapon' | 'sight' | 'charm'
 
 const TABS: Tab[] = ['uniform', 'headgear', 'weapon', 'sight', 'charm']
-const TAB_ICONS = { uniform: Shirt, headgear: HardHat, weapon: Crosshair, sight: Focus, charm: Gem }
 const FAMILIES = ['ranked', 'battlepass', 'esports', 'chibi', 'event', 'other']
 const RANKS = ['copper', 'bronze', 'silver', 'gold', 'platinum', 'emerald', 'diamond', 'champion']
 const yearOf = (season: string) => (season ? season.replace(/S\d$/, '') : 'none')
@@ -418,6 +417,7 @@ function OperatorPack({
   const [blend, setBlend] = useState(operator.blend)
   const [folder, setFolder] = useState('')
   const [error, setError] = useState('')
+  const [weaponsError, setWeaponsError] = useState('') // shown on the Weapons and Sights tabs only, which need that list
 
   useEffect(() => {
     api
@@ -433,15 +433,20 @@ function OperatorPack({
       .catch((e: Error) => setError(e.message))
   }, [operator.uid, round])
 
-  // weapons, sights and charms: once someone opens their tab, and again after a Prepare run (new downloads)
-  const catalogTab = tab === 'weapon' || tab === 'sight' || tab === 'charm'
+  // weapons, sights and charms: right away (the side panel counts them), and again after a Prepare run (new downloads)
   const readRound = useRef(-1)
   useEffect(() => {
-    if (!catalogTab || !indexed || readRound.current === round) return
+    if (!indexed || readRound.current === round) return
     readRound.current = round
-    api.call<Weapon[]>('operators.weapons', { uid: operator.uid }).then(setWeapons).catch((e: Error) => setError(e.message))
+    api
+      .call<Weapon[]>('operators.weapons', { uid: operator.uid })
+      .then((w) => {
+        setWeapons(w)
+        setWeaponsError('')
+      })
+      .catch((e: Error) => setWeaponsError(e.message))
     api.call<Charm[]>('catalog.charms').then(setCharms).catch(() => setCharms([]))
-  }, [catalogTab, indexed, round])
+  }, [indexed, round])
 
   // what the filters let through: search, seasons (skins and charms), kind and rank (charms)
   const q = query.toLowerCase()
@@ -498,7 +503,7 @@ function OperatorPack({
   const total: Record<Tab, number | undefined> = {
     uniform: items?.uniform.length,
     headgear: items?.headgear.length,
-    weapon: weapons?.reduce((n, w) => n + w.skins.length, 0),
+    weapon: weapons?.reduce((n, w) => n + 1 + w.skins.length, 0), // each weapon's "No skin" card is a pick too
     sight: weapons?.reduce((n, w) => n + w.sights.length, 0),
     charm: charms?.length
   }
@@ -586,21 +591,11 @@ function OperatorPack({
             <b>{operator.name}</b>
           </div>
         </div>
-        <div className="card pack-summary">
-          <div className="label">{t('pack.title')}</div>
-          <p>{t('pack.hint')}</p>
-          {/* what's in the pack so far; a row opens its tab */}
-          <div className="pack-counts">
-            {TABS.map((k) => {
-              const Icon = TAB_ICONS[k]
-              return (
-                <button key={k} className={`pack-count${tab === k ? ' on' : ''}${counts[k] ? ' has' : ''}`} onClick={() => setTab(k)}>
-                  <Icon size={16} strokeWidth={1.8} />
-                  <span>{t(`pack.${k}s`)}</span>
-                  <b>{counts[k]}</b>
-                </button>
-              )
-            })}
+        {/* the operator takes the column; what's picked of each kind is on the tabs (4/59), the pack is made here */}
+        <div className="card pack-summary" title={t('pack.hint')}>
+          <div className="pack-summary-head">
+            <div className="label">{t('pack.title')}</div>
+            <small>{t('pack.inPack', { n: TABS.reduce((n, k) => n + counts[k], 0) })}</small>
           </div>
           {busy ? (
             <div className="index-progress">
@@ -633,14 +628,14 @@ function OperatorPack({
       </aside>
 
       <section className="detail-main">
-        {error && (
+        {(error || (weaponsError && (tab === 'weapon' || tab === 'sight'))) && (
           <div className="notice">
-            <span>{t(error)}</span>
+            <span>{t(error || weaponsError)}</span>
           </div>
         )}
         <div className="card cosmetics">
           <div className="cosmetics-head">
-            <Segmented value={tab} onChange={setTab} options={TABS.map((k): [Tab, string] => [k, `${t(`pack.${k}s`)} · ${total[k] ?? '…'}`])} />
+            <Segmented value={tab} onChange={setTab} options={TABS.map((k): [Tab, string] => [k, `${t(`pack.${k}s`)} · ${counts[k]}/${total[k] ?? '…'}`])} />
             <div className="row">
               {(tab === 'weapon' || tab === 'charm') && (
                 <label className="search small">
@@ -693,7 +688,15 @@ function OperatorPack({
                   const on = skins[w.uid] ?? new Set<string>()
                   const pick = (id: string) => setSkins({ ...skins, [w.uid]: flip(on, id) })
                   const skinCard = (s: Skin) =>
-                    card(s.id, s.icon, on.has(s.id), () => pick(s.id), { caption: s.name, sub: s.season, rarity: s.rarity, shape: 'skin', missing: !s.file, tag: s.source })
+                    card(s.id, s.icon, on.has(s.id), () => pick(s.id), {
+                      caption: s.name,
+                      sub: s.season,
+                      rarity: s.rarity,
+                      shape: 'skin',
+                      missing: !s.file,
+                      // an old skin on its own old mesh (today's was redone since): the engine's file ends with :mesh
+                      tag: s.source && s.file.endsWith(':mesh') ? t('pack.oldModel', { s: s.source }) : s.source
+                    })
                   const groups = skinGroups(w)
                   return (
                     <section key={w.uid} className="weapon-block">
@@ -738,7 +741,8 @@ function OperatorPack({
                           {w.sights.map((s, i) =>
                             card(s.uid, s.uid, on.has(s.uid), () => setSights({ ...sights, [w.uid]: flip(on, s.uid) }), {
                               caption: s.name || `${t('pack.sights')} ${i + 1}`,
-                              shape: 'wide'
+                              shape: 'wide',
+                              tag: s.source
                             })
                           )}
                         </div>
@@ -770,7 +774,8 @@ function OperatorPack({
                       {list.map((c) =>
                         card(c.id, c.icon, charmPicks.has(c.id), () => setCharmPicks(flip(charmPicks, c.id)), {
                           caption: c.name,
-                          sub: c.rank ? t(`rank.${c.rank}`) : undefined,
+                          // the season an old charm comes from goes under its name: a pill would cover it on these narrow cards
+                          sub: [c.rank && t(`rank.${c.rank}`), c.source].filter(Boolean).join(' · ') || undefined,
                           rarity: c.rarity,
                           shape: 'square',
                           missing: !c.file

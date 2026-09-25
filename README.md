@@ -88,9 +88,10 @@ This is how the original **Glacier for the 552 Commando (Y5S4)** was recovered. 
 | --- | --- |
 | Vault: season list, Steam QR sign-in, file list, selective download, cancel, resume | Working |
 | Workspace detection (Ubisoft Connect, Steam libraries, Blender) | Working |
-| Operator Blender pack: uniforms and headgear, weapons with magazine, weapon skins (camo patterns too), sights and charms in one `.blend` | Working (78 operators on the current build; checked in Blender 5.2). A few sights (Holo A) can't be exported yet |
+| Operator Blender pack: uniforms and headgear, weapons with magazine, weapon skins (camo patterns too), sights and charms in one `.blend` | Working (78 operators on the current build; checked in Blender 5.2). The Holo A comes from an old build (below) |
 | The game's whole catalog with its own pictures: every weapon skin (4,765) and charm (2,489), with seasons, rarity and ranks | Working. Exporting needs the item installed or downloaded by the game; the rest is marked *To download* |
-| Retired skins from an old season (Settings → Paths → Old builds): Glacier, Dust Line, Racer, Union Jack… on the weapons whose mesh hasn't changed since | Working (Y2S3 Blood Orchid: 230 skin/weapon pairs on 9 weapons, 98 skins). Skins that are only a tint (Masonry Ruby, Cyan…) are left out |
+| Retired skins from an old season (Settings → Paths → Old builds): Glacier, Dust Line, Racer, Union Jack… on every weapon of the time | Working (Y2S3 Blood Orchid: 2,033 skin/weapon pairs on 68 weapons, 338 skins; Glacier on all 39 weapons the game lists it for). Where today's mesh was redone since (G36C, AUG, MP5… 50 weapons), the skin comes on its own 2017 mesh, magazine included. The ones that are a tint of one sheet (Ruby, Topaz, Cyan) come in their own colour, read from the old build's materials |
+| Retired charms and the Holo A from an old season: Year 1's charms (8 Ball, the Beta Icons, the chibis…) and the 2017 EOTech | Working (Y2S3: 426 charms, 230 of Year 1's 231, Black Ice's ranked charms included; every part in its own sheet and colour, read from the old build's materials: gold chibis, ranked metals, Velvet Shell's plume; the Holo A in plain paint: that build has its shape but not its textures) |
 | Weapons, attachments, skins, charms, Blender scene with skin switcher | Method proven by hand on the 552 Commando; app integration next |
 | Installer and portable build, no dependencies | Working |
 | Steam sign-in: QR code, or account name and password with Steam Guard | Working |

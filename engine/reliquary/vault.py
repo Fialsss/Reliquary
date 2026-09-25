@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import urllib.request
 import zipfile
 from contextlib import contextmanager
@@ -333,6 +334,15 @@ def _category(name: str) -> str:
     return "meshes" if "_mesh" in lower else "other"
 
 
+def _for_reliquary(name: str) -> bool:
+    """What an old build needs for its skins, charms and sights in Reliquary: the registry (datapc64.forge), the
+    dependency graphs, the ondemand archives (texture nodes, prefabs) and the merged mesh and texture banks; not
+    the maps and their lighting (Y2S3: 77 archives, 25.3 of 27 GB)."""
+    lower = name.lower()
+    return (lower == "datapc64.forge" or lower.endswith(".depgraphbin") or lower.startswith("datapc64_ondemand")
+            or ("_merged_" in lower and ("_mesh" in lower or "textures" in lower)))
+
+
 def parse_manifest(text: str) -> list[dict]:
     files = []
     for line in text.splitlines():
@@ -341,7 +351,7 @@ def parse_manifest(text: str) -> list[dict]:
             continue
         name = match[5]
         if name.endswith((".forge", ".depgraphbin")):
-            files.append({"name": name, "size": int(match[1]), "category": _category(name)})
+            files.append({"name": name, "size": int(match[1]), "category": _category(name), "reliquary": _for_reliquary(name)})
     return sorted(files, key=lambda f: f["name"])
 
 
@@ -460,11 +470,27 @@ def delete(season: str = "", manifest: str = "") -> dict:
 
 @method("vault.clear_cache")
 def clear_cache() -> dict:
+    from . import operators
+
     if _job_lock.locked():
         raise Failure("error.busy")
-    for path in _cache_paths():
-        if path.is_dir():
-            shutil.rmtree(path, ignore_errors=True)
-        else:
-            path.unlink(missing_ok=True)
+    # held for the whole clear: Prepare or a pack reads and writes the asset index, and neither may start meanwhile
+    if not operators._busy.acquire(blocking=False):
+        raise Failure("error.cacheInUse")
+    try:
+        # the files first: when one stays open, nothing else is gone yet
+        for path in sorted(_cache_paths(), key=lambda p: p.is_dir()):
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+                continue
+            for _ in range(30):  # a page may be reading the asset index for a moment: Windows won't delete it then
+                try:
+                    path.unlink(missing_ok=True)
+                    break
+                except PermissionError:
+                    time.sleep(0.1)
+            else:
+                raise Failure("error.cacheInUse")
+    finally:
+        operators._busy.release()
     return library()

@@ -64,9 +64,10 @@ for number, item in enumerate(spec["items"], 1):
     before = set(bpy.data.objects)
     for gltf in sorted(Path(item["folder"]).rglob("*.gltf")):
         import_siege_model(gltf)
-    # next to the operator; weapons and sights turned side-on (they come pointing along Y, like in the hands)
+    # next to the operator; weapons and sights turned side-on (they come pointing along Y, like in the hands), and
+    # charms with them: they hang facing the weapon's side (X), so from the front they'd show only their edge
     place = Matrix.Translation(Vector(item.get("offset", (0, 0, 0))))
-    if item["kind"] in ("weapon", "sight"):
+    if item["kind"] in ("weapon", "sight", "charm"):
         place = place @ Matrix.Rotation(math.pi / 2, 4, "Z")
     for obj in set(bpy.data.objects) - before:
         if obj.parent is None:

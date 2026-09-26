@@ -1,5 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
-import { statSync } from 'node:fs'
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, net, protocol, shell, systemPreferences } from 'electron'
+import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Engine } from './engine'
@@ -41,6 +41,22 @@ function fade(to: number, ms: number): Promise<void> {
   })
 }
 
+/** The taskbar icon plays the logo's light: Windows doesn't animate window icons, so the frames of its 5.2 s loop
+ * (resources/taskbar, 12 a second) take turns as the window's icon while the app is open. Not with reduced motion. */
+function animateIcon(win: BrowserWindow): void {
+  if (process.platform !== 'win32' || systemPreferences.getAnimationSettings().prefersReducedMotion) return
+  const folder = join(app.getAppPath(), 'resources', 'taskbar')
+  const frames = readdirSync(folder).sort().map((name) => nativeImage.createFromPath(join(folder, name)))
+  if (!frames.length) return
+  let frame = 0
+  const timer = setInterval(() => {
+    if (win.isDestroyed()) return clearInterval(timer)
+    frame = (frame + 1) % frames.length
+    win.setIcon(frames[frame])
+  }, 5200 / frames.length)
+  win.on('closed', () => clearInterval(timer))
+}
+
 function createWindow(): void {
   window = new BrowserWindow({
     width: 1160,
@@ -59,6 +75,7 @@ function createWindow(): void {
     win.setOpacity(0)
     win.show()
     fade(1, 280)
+    animateIcon(win)
   })
   win.on('closed', () => (window = undefined))
 

@@ -54,6 +54,7 @@
     "files": [
       "out/**/*",
       "resources/icon.png",
+      "resources/taskbar/*.png",
       "package.json"
     ],
     "extraResources": [

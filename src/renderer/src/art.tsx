@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from 'react'
+import logo from './assets/logo.svg'
 
 /** A stable hue for a season or operator id, so each one keeps its colour. */
 export function hueOf(key: string): number {
@@ -105,26 +106,8 @@ export function SeasonArt({ cover, seed, hue, className }: { cover?: string; see
   return <Shards className={className} seed={seed} hue={hue} />
 }
 
-/** The Reliquary mark: a cut crystal, silver on black. */
+/** The Reliquary mark: a cut crystal, silver on black, with a light sweeping it and three glints in turn (its own
+ * CSS animation, off with reduced motion). An <img>, so every copy keeps its gradient and filter ids to itself. */
 export function Mark({ size = 36 }: { size?: number }) {
-  const id = useId().replace(/:/g, '')
-  return (
-    <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden="true">
-      <defs>
-        <linearGradient id={`${id}r`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#ffffff" />
-          <stop offset="1" stopColor="#8d939c" />
-        </linearGradient>
-        <linearGradient id={`${id}l`} x1="1" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#c9ced6" />
-          <stop offset="1" stopColor="#3c4048" />
-        </linearGradient>
-      </defs>
-      <path d="M20 3 33 13 20 37Z" fill={`url(#${id}r)`} />
-      <path d="M20 3 7 13 20 37Z" fill={`url(#${id}l)`} />
-      <path d="M7 13 20 18 33 13 20 3Z" fill="#f4f6f9" />
-      <path d="M7 13 20 18 33 13" fill="none" stroke="#0b0b0d" strokeOpacity=".35" strokeWidth=".8" />
-      <path d="M20 18v19" stroke="#0b0b0d" strokeOpacity=".3" strokeWidth=".8" />
-    </svg>
-  )
+  return <img className="mark" src={logo} width={size} height={size} alt="" aria-hidden="true" draggable={false} />
 }

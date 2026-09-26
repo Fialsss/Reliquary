@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 44 44" class="rq-logo" style="--rq-duration:5.2s;--rq-repeat:infinite;overflow:hidden" role="img" aria-labelledby="reliquary-title"><title id="reliquary-title">Reliquary</title>
+<defs>
+    <linearGradient id="rq-right" x1="20" y1="3" x2="30" y2="36" gradientUnits="userSpaceOnUse"><stop stop-color="#fafcff"/><stop offset=".42" stop-color="#c6d0df"/><stop offset="1" stop-color="#737f93"/></linearGradient>
+    <linearGradient id="rq-left" x1="8" y1="11" x2="23" y2="35" gradientUnits="userSpaceOnUse"><stop stop-color="#a6b2c5"/><stop offset=".52" stop-color="#657187"/><stop offset="1" stop-color="#303b4d"/></linearGradient>
+    <linearGradient id="rq-top" x1="12" y1="7" x2="28" y2="18" gradientUnits="userSpaceOnUse"><stop stop-color="#ffffff"/><stop offset=".5" stop-color="#e6edf7"/><stop offset="1" stop-color="#b8c6d9"/></linearGradient>
+    <linearGradient id="rq-glint"><stop stop-color="#ffffff" stop-opacity="0"/><stop offset=".5" stop-color="#ffffff" stop-opacity=".7"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+    <clipPath id="rq-clip"><path d="M20 3 33 13 20 37 7 13Z"/></clipPath>
+  <filter id="rq-glow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation=".7" result="glow"/><feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="rq-bloom" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation=".6"/></filter></defs>
+<style>
+.rq-light{animation-duration:var(--rq-duration,5.2s);animation-iteration-count:var(--rq-repeat,1);animation-fill-mode:both;animation-timing-function:ease-in-out;opacity:0}
+.rq-sweep{animation-name:rq-sweep}
+.rq-star{transform-origin:0 0}
+.rq-star1{animation-name:rq-star1}
+.rq-star2{animation-name:rq-star2}
+.rq-star3{animation-name:rq-star3}
+@keyframes rq-sweep{0%,6%{opacity:0;transform:translateX(-34px)}15%{opacity:1}43%,100%{opacity:0;transform:translateX(32px)}}
+@keyframes rq-star1{0%,19%{opacity:0;transform:scale(0) rotate(-12deg)}24%{opacity:1;transform:scale(1.05) rotate(0)}28%{opacity:.9;transform:scale(.72) rotate(10deg)}35%,100%{opacity:0;transform:scale(0) rotate(22deg)}}
+@keyframes rq-star2{0%,42%{opacity:0;transform:scale(0) rotate(-12deg)}47%{opacity:1;transform:scale(.85) rotate(0)}51%{opacity:.85;transform:scale(.6) rotate(10deg)}58%,100%{opacity:0;transform:scale(0) rotate(22deg)}}
+@keyframes rq-star3{0%,68%{opacity:0;transform:scale(0) rotate(-12deg)}73%{opacity:1;transform:scale(.7) rotate(0)}77%{opacity:.8;transform:scale(.48) rotate(10deg)}84%,100%{opacity:0;transform:scale(0) rotate(22deg)}}
+@media(prefers-reduced-motion:reduce){.rq-light{animation:none!important;display:none}}
+</style>
+<g class="rq-fixed">
+    <path class="rq-right" d="M20 3 33 13 20 37Z" fill="url(#rq-right)"/>
+    <path class="rq-left" d="M20 3 7 13 20 37Z" fill="url(#rq-left)"/>
+    <path class="rq-top" d="M7 13 20 18 33 13 20 3Z" fill="url(#rq-top)"/>
+    <g class="rq-edges" fill="none" stroke-linejoin="round">
+      <path d="M7 13 20 18 33 13M20 18V37" stroke="#202c40" stroke-opacity=".78" stroke-width=".19"/>
+      <path d="M7.3 12.93 20 17.78 32.7 12.93M20.17 18.1V36.3" stroke="#ffffff" stroke-opacity=".55" stroke-width=".12"/>
+      <path d="M20 3 33 13 20 37 7 13Z" stroke="#dce7f8" stroke-opacity=".48" stroke-width=".12"/>
+    </g>
+    
+  </g>
+
+<g clip-path="url(#rq-clip)"><path class="rq-light rq-sweep" d="M12-5H19L31 45H24Z" fill="url(#rq-glint)"/></g>
+<g transform="translate(20 3) scale(2.2)"><g class="rq-light rq-star rq-star1" filter="url(#rq-glow)"><circle r="1.25" fill="#ffffff" opacity=".9" filter="url(#rq-bloom)"/><path d="M0-2 .55-.55 2 0 .55.55 0 2-.55.55-2 0-.55-.55Z" fill="#fffdf5"/><circle r=".3" fill="#ffffff"/></g></g>
+<g transform="translate(33 13) scale(2.2)"><g class="rq-light rq-star rq-star2" filter="url(#rq-glow)"><circle r="1.25" fill="#ffffff" opacity=".9" filter="url(#rq-bloom)"/><path d="M0-2 .55-.55 2 0 .55.55 0 2-.55.55-2 0-.55-.55Z" fill="#fffdf5"/><circle r=".3" fill="#ffffff"/></g></g>
+<g transform="translate(7 13) scale(2.2)"><g class="rq-light rq-star rq-star3" filter="url(#rq-glow)"><circle r="1.25" fill="#ffffff" opacity=".9" filter="url(#rq-bloom)"/><path d="M0-2 .55-.55 2 0 .55.55 0 2-.55.55-2 0-.55-.55Z" fill="#fffdf5"/><circle r=".3" fill="#ffffff"/></g></g>
+</svg>
